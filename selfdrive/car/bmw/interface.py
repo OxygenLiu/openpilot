@@ -102,7 +102,7 @@ class CarInterface(CarInterfaceBase):
     ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.bmw)]
 
     ret.steerControlType = car.CarParams.SteerControlType.torque
-    ret.steerActuatorDelay = 1.0 #s, planetary gearbox 13.7
+    ret.steerActuatorDelay = 0.6 #s, planetary gearbox 13.7
     ret.steerLimitTimer = 0.4
     ret.lateralTuning.init('torque')
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
