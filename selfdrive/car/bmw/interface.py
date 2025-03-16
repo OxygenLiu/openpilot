@@ -102,16 +102,15 @@ class CarInterface(CarInterfaceBase):
     ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.bmw)]
 
     ret.steerControlType = car.CarParams.SteerControlType.torque
-    ret.steerActuatorDelay = 0.4
+    ret.steerActuatorDelay = 0.4 #s, planetary gearbox 13.7
     ret.steerLimitTimer = 0.4
-
+    ret.lateralTuning.init('torque')
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-    ret.lateralTuning.torque.kp = 1.5 / CarControllerParams.STEER_MAX
-    ret.lateralTuning.torque.ki = 0.5 / CarControllerParams.STEER_MAX
-    ret.lateralTuning.torque.kf = 5.0 / CarControllerParams.STEER_MAX
-    ret.lateralTuning.torque.friction = 0.23 #live parameters
-    ret.lateralTuning.torque.latAccelFactor = 1.41 #live parameters
-    ret.lateralTuning.torque.useSteeringAngle = False
+    ret.lateralTuning.torque.kp = 2.0 / CarControllerParams.STEER_MAX
+    ret.lateralTuning.torque.ki = 2.0 / CarControllerParams.STEER_MAX
+    ret.lateralTuning.torque.kf = 8.0 / CarControllerParams.STEER_MAX
+    ret.lateralTuning.torque.latAccelOffset = -0.190
+    ret.lateralTuning.torque.useSteeringAngle = True
     ret.lateralTuning.torque.steeringAngleDeadzoneDeg = 0.0 # backlash of stepper?
 
     ret.longitudinalActuatorDelay  = 1.0 #s, Gas/Brake actuator delay
