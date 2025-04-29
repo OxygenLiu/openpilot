@@ -141,13 +141,13 @@ class CarController(CarControllerBase):
             and not speed_err_req < -10*CV.KPH_TO_MS*self.cruise_units:
           cruise_cmd(CruiseStalk.plus5, hold=True) # produces up to 1.2 m/s2
         elif (self.accel_with_hyst < DECEL_HOLD_STRONG or (self.accel_with_hyst < DECEL_HOLD_MEDIUM and speed_err_act < -3.0)) \
-            and not speed_err_req > 10*CV.KPH_TO_MS*self.cruise_units and not CS.out.gasPressed:
+            and not speed_err_req > 20*CV.KPH_TO_MS*self.cruise_units and not CS.out.gasPressed:
           cruise_cmd(CruiseStalk.minus5, hold=True) # produces down to -1.4 m/s2
         elif (self.accel_with_hyst > ACCEL_HOLD_MEDIUM or speed_err_act > 2.0) \
             and not speed_err_req < -5*CV.KPH_TO_MS*self.cruise_units:
           cruise_cmd(CruiseStalk.plus1, hold=True) # produces up to 0.8 m/s2
         elif (self.accel_with_hyst < DECEL_HOLD_MEDIUM or speed_err_act < -2.0) \
-            and not speed_err_req > 5*CV.KPH_TO_MS*self.cruise_units and not CS.out.gasPressed:
+            and not speed_err_req > 10*CV.KPH_TO_MS*self.cruise_units and not CS.out.gasPressed:
           cruise_cmd(CruiseStalk.minus1, hold=True) # produces down to -0.8 m/s2
         elif (speed_err_req > CC_STEP/2 and self.accel_with_hyst > 0.0) or CS.out.gasPressed:
           cruise_cmd(CruiseStalk.plus1)
