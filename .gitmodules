@@ -15,4 +15,5 @@
   url = https://github.com/tinygrad/tinygrad.git
 [submodule "opendbc"]
 	path = opendbc_repo
-	url = https://github.com/dzid26/opendbc-BMW-E8x-E9x
+	url = https://github.com/OxygenLiu/opendbc-BMW-E8x-E9x.git
+	branch = bmw-0.9.8-rebased
