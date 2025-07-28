@@ -167,10 +167,34 @@ class Controls:
     if self.sm['selfdriveState'].active:
       CO = self.sm['carOutput']
       if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
-        self.steer_limited_by_controls = abs(CC.actuators.steeringAngleDeg - CO.actuatorsOutput.steeringAngleDeg) > \
-                                              STEER_ANGLE_SATURATION_THRESHOLD
+        steer_diff = abs(CC.actuators.steeringAngleDeg - CO.actuatorsOutput.steeringAngleDeg)
+        self.steer_limited_by_controls = steer_diff > STEER_ANGLE_SATURATION_THRESHOLD
+        
+        # BMW Debug: Log control mismatch for angle control
+        if hasattr(self, 'debug_frame_counter'):
+          self.debug_frame_counter += 1
+        else:
+          self.debug_frame_counter = 0
+          
+        if (self.debug_frame_counter % 25) == 0:  # Every 250ms
+          print(f"BMW_CONTROL_DEBUG_ANGLE: req={CC.actuators.steeringAngleDeg:.1f} out={CO.actuatorsOutput.steeringAngleDeg:.1f} diff={steer_diff:.1f} limited={self.steer_limited_by_controls}")
+          
       else:
-        self.steer_limited_by_controls = abs(CC.actuators.torque - CO.actuatorsOutput.torque) > 1e-2
+        steer_diff = abs(CC.actuators.torque - CO.actuatorsOutput.torque)
+        self.steer_limited_by_controls = steer_diff > 1e-2
+        
+        # BMW Debug: Log control mismatch for torque control
+        if hasattr(self, 'debug_frame_counter'):
+          self.debug_frame_counter += 1
+        else:
+          self.debug_frame_counter = 0
+          
+        if (self.debug_frame_counter % 25) == 0:  # Every 250ms
+          print(f"BMW_CONTROL_DEBUG_TORQUE: req={CC.actuators.torque:.3f} out={CO.actuatorsOutput.torque:.3f} diff={steer_diff:.3f} limited={self.steer_limited_by_controls}")
+          
+        # Log significant control mismatch immediately 
+        if steer_diff > 0.1:  # Significant mismatch threshold
+          print(f"BMW_CONTROL_MISMATCH: DETECTED req_torque={CC.actuators.torque:.3f} out_torque={CO.actuatorsOutput.torque:.3f} diff={steer_diff:.3f}")
 
     # TODO: both controlsState and carControl valids should be set by
     #       sm.all_checks(), but this creates a circular dependency
