@@ -3,7 +3,10 @@
 #include "common/swaglog.h"
 
 void PandaSafety::configureSafetyMode(bool is_onroad) {
+  LOGD("BMW Debug: configureSafetyMode called - is_onroad=%d, safety_configured_=%d", is_onroad, safety_configured_);
+  
   if (is_onroad && !safety_configured_) {
+    LOGW("BMW Debug: System is onroad and safety not configured, attempting to set BMW safety mode");
     updateMultiplexingMode();
 
     auto car_params = fetchCarParams();
@@ -11,6 +14,9 @@ void PandaSafety::configureSafetyMode(bool is_onroad) {
       LOGW("got %lu bytes CarParams", car_params.size());
       setSafetyMode(car_params);
       safety_configured_ = true;
+      LOGW("BMW Debug: BMW safety mode configured successfully!");
+    } else {
+      LOGW("BMW Debug: Failed to get CarParams, staying in ELM327 mode");
     }
   } else if (!is_onroad) {
     initialized_ = false;
@@ -43,6 +49,7 @@ void PandaSafety::updateMultiplexingMode() {
 
 std::string PandaSafety::fetchCarParams() {
   if (!params_.getBool("FirmwareQueryDone")) {
+    LOGD("BMW Debug: FirmwareQueryDone = FALSE, waiting...");
     return {};
   }
 
@@ -52,9 +59,18 @@ std::string PandaSafety::fetchCarParams() {
   }
 
   if (!params_.getBool("ControlsReady")) {
+    LOGD("BMW Debug: ControlsReady = FALSE, waiting...");
     return {};
   }
-  return params_.get("CarParams");
+  
+  std::string car_params = params_.get("CarParams");
+  if (car_params.empty()) {
+    LOGD("BMW Debug: CarParams is EMPTY!");
+    return {};
+  }
+  
+  LOGW("BMW Debug: Got CarParams (%lu bytes), setting safety mode...", car_params.size());
+  return car_params;
 }
 
 void PandaSafety::setSafetyMode(const std::string &params_string) {

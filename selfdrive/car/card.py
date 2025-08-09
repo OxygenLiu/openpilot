@@ -104,6 +104,7 @@ class Car:
       self.CP = self.CI.CP
 
       # continue onto next fingerprinting step in pandad
+      cloudlog.warning(f"BMW Debug: Setting FirmwareQueryDone=True, car fingerprint: {self.CI.CP.carFingerprint}")
       self.params.put_bool("FirmwareQueryDone", True)
     else:
       self.CI, self.CP = CI, CI.CP
@@ -146,6 +147,10 @@ class Car:
 
     # Write CarParams for controls and radard
     cp_bytes = self.CP.to_bytes()
+    cloudlog.warning(f"BMW Debug: Writing CarParams ({len(cp_bytes)} bytes) for {self.CP.carFingerprint}")
+    if hasattr(self.CP, 'safetyConfigs') and self.CP.safetyConfigs:
+      safety = self.CP.safetyConfigs[0]
+      cloudlog.warning(f"BMW Debug: Safety model={safety.safetyModel}, param={safety.safetyParam}")
     self.params.put("CarParams", cp_bytes)
     self.params.put_nonblocking("CarParamsCache", cp_bytes)
     self.params.put_nonblocking("CarParamsPersistent", cp_bytes)
@@ -233,6 +238,7 @@ class Car:
       # TODO: this can make us miss at least a few cycles when doing an ECU knockout
       self.CI.init(self.CP, *self.can_callbacks)
       # signal pandad to switch to car safety mode
+      cloudlog.warning(f"BMW Debug: Setting ControlsReady=True, car fingerprint: {self.CP.carFingerprint}")
       self.params.put_bool_nonblocking("ControlsReady", True)
 
     if self.sm.all_alive(['carControl']):
