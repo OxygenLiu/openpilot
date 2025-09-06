@@ -1,9 +1,11 @@
 [submodule "panda"]
   path = panda
-  url = ../../commaai/panda.git
+  url = https://github.com/OxygenLiu/panda.git
+  branch = can-error-fix
 [submodule "opendbc"]
   path = opendbc_repo
-  url = ../../commaai/opendbc.git
+  url = https://github.com/OxygenLiu/opendbc-BMW-E8x-E9x.git
+  branch = bmw-rebased
 [submodule "msgq"]
   path = msgq_repo
   url = ../../commaai/msgq.git
