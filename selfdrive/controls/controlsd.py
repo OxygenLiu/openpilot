@@ -71,7 +71,10 @@ class Controls:
     # Update VehicleModel
     lp = self.sm['liveParameters']
     x = max(lp.stiffnessFactor, 0.1)
-    sr = max(lp.steerRatio, 0.1)
+    
+    # Use car-specific variable steer ratio if available, otherwise use learned steer ratio
+    sr = max(getattr(self.CI, 'get_current_variable_steer_ratio', lambda: lp.steerRatio)(), 0.1)
+    
     self.VM.update_params(x, sr)
 
     steer_angle_without_offset = math.radians(CS.steeringAngleDeg - lp.angleOffsetDeg)
