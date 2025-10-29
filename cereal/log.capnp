@@ -1248,6 +1248,7 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   speeds @33 :List(Float32);
   jerks @34 :List(Float32);
   aTarget @18 :Float32;
+  vTarget @40 :Float32;  # delay-compensated velocity target from get_accel_from_plan
   shouldStop @37: Bool;
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
@@ -2295,6 +2296,21 @@ struct LiveDelayData {
   lateralDelayEstimateStd @5 :Float32;
   points @4 :List(Float32);
   calPerc @6 :Int8;
+
+  # Longitudinal actuator delay learning fields
+  longitudinalDelay @7 :Float32;
+  longitudinalDelayEstimate @8 :Float32;
+  longitudinalDelayEstimateStd @9 :Float32;
+  longitudinalValidBlocks @10 :Int32;
+  longitudinalStatus @11 :Status;
+  longitudinalCalPerc @12 :Int8;
+  longitudinalPoints @13 :List(Float32);
+
+  # Vision-CAN speed safety validation
+  visionSpeed @14 :Float32;
+  canSpeed @15 :Float32;
+  visionCanDiff @16 :Float32;
+  visionCanSafetyPassed @17 :Bool;
 
   enum Status {
     unestimated @0;
