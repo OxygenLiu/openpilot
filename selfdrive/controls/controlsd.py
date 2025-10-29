@@ -18,6 +18,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, S
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
+from openpilot.selfdrive.locationd.lagd import LongitudinalLagEstimator, apply_learned_longitudinal_delay
 
 State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
@@ -33,16 +34,25 @@ class Controls:
     self.CP = messaging.log_from_bytes(self.params.get("CarParams", block=True), car.CarParams)
     cloudlog.info("controlsd got CarParams")
 
+    # Apply learned longitudinal delay from persistent storage
+    # This updates CP.longitudinalActuatorDelay for improved MPC velocity target extraction
+    self.CP = apply_learned_longitudinal_delay(self.CP, self.params)
+
     self.CI = interfaces[self.CP.carFingerprint](self.CP)
 
     self.sm = messaging.SubMaster(['liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
-                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'carState', 'carOutput',
+                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'radarState', 'carState', 'carOutput',
                                    'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'])
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
+
+    # Initialize longitudinal actuator delay learner
+    # Learned delay is loaded from persistent storage above and applied to CP.longitudinalActuatorDelay
+    # This automatically flows into get_accel_from_plan(action_t = delay + DT_MDL) for better compensation
+    self.long_lag_learner = LongitudinalLagEstimator(self.CP, 1.0 / 20.0)  # 20Hz update rate
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -116,6 +126,44 @@ class Controls:
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
 
+    # Update longitudinal delay learner with current signals
+    # Pass available SubMaster data and current carControl state
+    try:
+      for which in ['carState', 'modelV2']:
+        if self.sm.updated.get(which, False) and self.sm.logMonoTime.get(which, 0) > 0:
+          self.long_lag_learner.handle_log(self.sm.logMonoTime[which] * 1e-9, which, self.sm[which])
+    except (KeyError, IndexError):
+      # Data not available yet - skip this frame
+      pass
+
+    # Pass current carControl data directly (not from SubMaster since it's publish-only)
+    # Use selfdriveState timestamp as current frame reference (poll='selfdriveState')
+    current_frame_time = self.sm.logMonoTime['selfdriveState'] * 1e-9
+    self.long_lag_learner.handle_log(current_frame_time, "carControl", CC)
+
+    self.long_lag_learner.update_points()
+    self.long_lag_learner.update_estimate()
+
+    # Use delay-compensated MPC velocity target (accounts for longitudinalActuatorDelay)
+    # vTarget = v_desired_trajectory interpolated at (actuatorDelay + DT_MDL)
+    # This provides feedforward compensation - commands what's needed when actuator responds
+    # MPC refines ModelV2 predictions with physics/comfort/safety constraints:
+    # - Physics: smooth acceleration changes, jerk limits
+    # - Comfort: A_CHANGE_COST=200, J_EGO_COST=5
+    # - Safety: safe following distance, acceleration limits ±3.5/2.0 m/s²
+    #
+    # CP.longitudinalActuatorDelay is automatically updated with learned delay from lagd at init
+    # This continuously improves vTarget extraction accuracy as system learns actual delay
+    if long_plan.vTarget > 0:
+      actuators.speed = float(long_plan.vTarget)
+
+    # Vision-estimated current velocity for accurate carcontroller velocity error calculation
+    # Uses ModelV2 index 0 (t=0.0s) which represents current vision-based speed
+    if len(model_v2.velocity.x) > 0:
+      actuators.visionSpeed = float(model_v2.velocity.x[0])  # Current vision-estimated velocity (t=0.0s)
+    else:
+      actuators.visionSpeed = CS.vEgo  # Fallback to filtered CAN speed
+
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
     new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
@@ -160,6 +208,16 @@ class Controls:
     hudControl.leadVisible = self.sm['longitudinalPlan'].hasLead
     hudControl.leadDistanceBars = self.sm['selfdriveState'].personality.raw + 1
     hudControl.visualAlert = self.sm['selfdriveState'].alertHudVisual
+
+    # Populate lead car velocity and distance from radarState (vision-based for BMW)
+    if self.sm.valid['radarState']:
+      lead = self.sm['radarState'].leadOne
+      hudControl.leadVelocity = float(lead.vLead) if lead.status else 0.0
+      hudControl.leadDistance = float(lead.dRel) if lead.status else 0.0
+    else:
+      # Fallback if radarState not available (radard not running)
+      hudControl.leadVelocity = 0.0
+      hudControl.leadDistance = 0.0
 
     hudControl.rightLaneVisible = True
     hudControl.leftLaneVisible = True

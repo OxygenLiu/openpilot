@@ -150,6 +150,220 @@ class BlockAverage:
     return valid_mean, valid_std, current_mean, current_std
 
 
+class LongitudinalLagEstimator:
+  inputs = {"carControl", "carState", "controlsState", "modelV2", "longitudinalPlan"}
+
+  def __init__(self, CP: car.CarParams, dt: float = 0.05,
+               block_count: int = BLOCK_NUM, min_valid_block_count: int = BLOCK_NUM_NEEDED, block_size: int = BLOCK_SIZE,
+               min_vego: float = 8.0, max_vego: float = 40.0, min_accel: float = 0.2, min_ncc: float = 0.9, min_confidence: float = 0.2):
+    self.dt = dt
+    self.initial_lag = CP.longitudinalActuatorDelay
+    self.block_size = block_size
+    self.block_count = block_count
+    self.min_valid_block_count = min_valid_block_count
+    self.min_vego = min_vego
+    self.max_vego = max_vego
+    self.min_accel = min_accel
+    self.min_ncc = min_ncc
+    self.min_confidence = min_confidence
+
+    self.t = 0.0
+    self.long_active = False
+    self.gas_pressed = False
+    self.brake_pressed = False
+    self.cruise_enabled = False
+    self.target_velocity = 0.0  # MPC delay-compensated velocity target from longitudinalPlan.vTarget
+    self.vision_velocity = 0.0   # ModelV2 vision-estimated current velocity (for safety validation)
+    self.vehicle_velocity = 0.0  # Kalman-filtered CAN velocity (for delay correlation and quality filtering)
+    self.accel_command = 0.0
+
+    # Add tracking for estimation updates
+    self.last_estimate_t = 0.0
+
+    window_len = int(60.0 / self.dt)  # 60 second window
+    self.points = Points(window_len)
+    self.block_avg = BlockAverage(self.block_count, self.block_size, 0, self.initial_lag)
+
+  def reset(self, initial_lag: float, valid_blocks: int):
+    """Reset longitudinal lag estimator with learned delay from persistent storage"""
+    window_len = int(60.0 / self.dt)
+    self.points = Points(window_len)
+    self.block_avg = BlockAverage(self.block_count, self.block_size, valid_blocks, initial_lag)
+    cloudlog.info(f"LongitudinalLagEstimator initialized with learned delay: {initial_lag:.3f}s ({valid_blocks} valid blocks)")
+
+  def handle_log(self, t: float, which: str, sm_data):
+    if which == "carState":
+      self.vehicle_velocity = sm_data.vEgo  # Kalman-filtered CAN velocity (for delay correlation and quality filtering)
+      self.gas_pressed = sm_data.gasPressed
+      self.brake_pressed = sm_data.brakePressed
+      self.cruise_enabled = sm_data.cruiseState.enabled
+    elif which == "carControl":
+      self.accel_command = sm_data.actuators.accel
+      self.long_active = sm_data.longActive  # longActive is in carControl, not controlsState
+    elif which == "controlsState":
+      pass  # No fields needed from controlsState currently
+    elif which == "longitudinalPlan":
+      # CRITICAL: Use MPC delay-compensated velocity target (not raw ModelV2!)
+      # vTarget is extracted from MPC trajectory at action_t = longitudinalActuatorDelay + DT_MDL
+      # This includes MPC optimization (physics/comfort/safety constraints) AND delay compensation
+      if sm_data.vTarget > 0:
+        self.target_velocity = sm_data.vTarget  # Delay-compensated MPC velocity
+    elif which == "modelV2":
+      if len(sm_data.velocity.x) > 0:
+        # Vision-estimated current velocity for safety validation
+        self.vision_velocity = sm_data.velocity.x[0]  # Current vision-estimated velocity (t=0.0s)
+
+    self.t = t
+
+  def update_points(self):
+    # Quality filtering for longitudinal delay learning
+    # CRITICAL: Compares MPC delay-compensated velocity target vs Kalman-filtered vehicle velocity
+    # This measures real actuator delay: vision command → actual vehicle CAN response
+    valid_conditions = [
+      # Speed range: highway speeds for accurate measurement (use vehicle sensor for safety)
+      self.min_vego <= self.vehicle_velocity <= self.max_vego,
+
+      # Active longitudinal acceleration
+      abs(self.accel_command) > self.min_accel,
+
+      # No driver override
+      not self.gas_pressed,
+      not self.brake_pressed,
+
+      # Cruise control active
+      self.long_active,
+      self.cruise_enabled,
+
+      # Reasonable velocity error between vision signals (avoid saturation)
+      abs(self.target_velocity - self.vision_velocity) < 8.0,
+
+      # Valid ModelV2 outputs
+      self.target_velocity > 0.1,
+      self.vision_velocity > 0.1,
+
+      # CRITICAL SAFETY: Vision speed vs vehicle CAN speed validation
+      # ModelV2 vision speed must agree with vehicle CAN within ±5 km/h (±1.39 m/s)
+      # This prevents malfunction of openpilot vision or vehicle hardware
+      abs(self.vision_velocity - self.vehicle_velocity) < 1.39,  # ±5 km/h safety tolerance
+    ]
+
+    if all(valid_conditions):
+      # Compare MPC delay-compensated target vs Kalman-filtered vehicle velocity
+      # target_velocity = longitudinalPlan.vTarget (MPC-optimized, delay-compensated from vision)
+      # vehicle_velocity = carState.vEgo (Kalman-filtered CAN speed, stable and reliable)
+      # This measures real actuator delay: vision command → actual vehicle CAN response
+      self.points.update(self.t, self.target_velocity, self.vehicle_velocity, True)
+    else:
+      self.points.update(self.t, self.target_velocity, self.vehicle_velocity, False)
+
+  def points_enough(self):
+    """Check if we have enough data points for correlation analysis"""
+    return self.points.num_points >= self.block_size and self.points.num_okay >= self.block_size // 2
+
+  def points_valid(self):
+    """Check if we have sufficient valid data points"""
+    return self.points.num_okay / max(1, self.points.num_points) >= 0.5
+
+  def update_estimate(self):
+    if not self.points_enough():
+      return
+
+    times, desired, actual, okay = self.points.get()
+
+    # Check if there are any new valid data points since the last update
+    is_valid = self.points_valid()
+    if hasattr(self, 'last_estimate_t') and self.last_estimate_t != 0 and times[0] <= self.last_estimate_t:
+      new_values_start_idx = next(-i for i, t in enumerate(reversed(times)) if t <= self.last_estimate_t)
+      is_valid = is_valid and not (new_values_start_idx == 0 or not np.any(okay[new_values_start_idx:]))
+
+    delay, corr, confidence = self.actuator_delay(desired, actual, okay, self.dt, 2.0)  # Max 2s delay
+    if corr < self.min_ncc or confidence < self.min_confidence or not is_valid:
+      return
+
+    self.block_avg.update(delay)
+    self.last_estimate_t = self.t
+
+  def get_lag(self):
+    valid_mean_lag, _, _, _ = self.block_avg.get()
+    if self.block_avg.valid_blocks >= self.min_valid_block_count and not np.isnan(valid_mean_lag):
+      return valid_mean_lag
+    return self.initial_lag
+
+  def has_learned_delay(self):
+    valid_mean_lag, valid_std, _, _ = self.block_avg.get()
+    return (self.block_avg.valid_blocks >= self.min_valid_block_count and
+            not np.isnan(valid_mean_lag) and
+            valid_std <= 0.1 and
+            abs(valid_mean_lag - self.initial_lag) > 0.05)
+
+  def get_learned_delay(self):
+    return self.get_lag()
+
+  def get_confidence(self):
+    _, valid_std, _, _ = self.block_avg.get()
+    if self.block_avg.valid_blocks < self.min_valid_block_count or np.isnan(valid_std):
+      return 0.0
+    return max(0.0, min(1.0, 1.0 - (valid_std / 0.1)))
+
+  def get_longitudinal_msg_data(self, debug: bool = False) -> dict:
+    """Generate longitudinal delay data for liveDelay message"""
+    valid_mean_lag, valid_std, current_mean_lag, current_std = self.block_avg.get()
+
+    # Determine status
+    if self.block_avg.valid_blocks >= self.min_valid_block_count and not np.isnan(valid_mean_lag) and not np.isnan(valid_std):
+      if valid_std > 0.1:  # MAX_LAG_STD threshold
+        status = log.LiveDelayData.Status.invalid
+      else:
+        status = log.LiveDelayData.Status.estimated
+    else:
+      status = log.LiveDelayData.Status.unestimated
+
+    # Set delay values
+    if status == log.LiveDelayData.Status.estimated:
+      longitudinal_delay = valid_mean_lag
+    else:
+      longitudinal_delay = self.initial_lag
+
+    if not np.isnan(current_mean_lag) and not np.isnan(current_std):
+      longitudinal_delay_estimate = current_mean_lag
+      longitudinal_delay_estimate_std = current_std
+    else:
+      longitudinal_delay_estimate = self.initial_lag
+      longitudinal_delay_estimate_std = 0.0
+
+    # Calculate calibration percentage
+    longitudinal_cal_perc = min(100 * (self.block_avg.valid_blocks * self.block_size + self.block_avg.idx) //
+                               (self.min_valid_block_count * self.block_size), 100)
+
+    # Vision-CAN speed safety validation
+    vision_can_diff = abs(self.vision_velocity - self.vehicle_velocity)
+    vision_can_safety_passed = vision_can_diff < 1.39  # ±5 km/h tolerance
+
+    data = {
+      'longitudinalDelay': float(longitudinal_delay),
+      'longitudinalDelayEstimate': float(longitudinal_delay_estimate),
+      'longitudinalDelayEstimateStd': float(longitudinal_delay_estimate_std),
+      'longitudinalValidBlocks': int(self.block_avg.valid_blocks),
+      'longitudinalStatus': status,
+      'longitudinalCalPerc': int(longitudinal_cal_perc),
+      'visionSpeed': float(self.vision_velocity),
+      'canSpeed': float(self.vehicle_velocity),
+      'visionCanDiff': float(vision_can_diff),
+      'visionCanSafetyPassed': bool(vision_can_safety_passed),
+    }
+
+    if debug:
+      data['longitudinalPoints'] = self.block_avg.values.flatten().tolist()
+    else:
+      data['longitudinalPoints'] = []
+
+    return data
+
+  @staticmethod
+  def actuator_delay(expected_sig: np.ndarray, actual_sig: np.ndarray, mask: np.ndarray, dt: float, max_lag: float) -> tuple[float, float, float]:
+    return LateralLagEstimator.actuator_delay(expected_sig, actual_sig, mask, dt, max_lag)
+
+
 class LateralLagEstimator:
   inputs = {"carControl", "carState", "controlsState", "liveCalibration", "livePose"}
 
@@ -337,6 +551,7 @@ class LateralLagEstimator:
 
 
 def retrieve_initial_lag(params: Params, CP: car.CarParams):
+  """Retrieve learned lateral and longitudinal delays from persistent storage"""
   last_lag_data = params.get("LiveDelay")
   last_carparams_data = params.get("CarParamsPrevRoute")
 
@@ -347,15 +562,64 @@ def retrieve_initial_lag(params: Params, CP: car.CarParams):
         if last_CP.carFingerprint != CP.carFingerprint:
           raise Exception("Car model mismatch")
 
-        lag, valid_blocks, status = ld.lateralDelayEstimate, ld.validBlocks, ld.status
-        assert valid_blocks <= BLOCK_NUM, "Invalid number of valid blocks"
-        assert status != log.LiveDelayData.Status.invalid, "Lag estimate is invalid"
-        return lag, valid_blocks
+        # Lateral delay (existing)
+        lateral_lag = ld.lateralDelayEstimate
+        lateral_valid_blocks = ld.validBlocks
+        lateral_status = ld.status
+        assert lateral_valid_blocks <= BLOCK_NUM, "Invalid number of lateral valid blocks"
+        assert lateral_status != log.LiveDelayData.Status.invalid, "Lateral lag estimate is invalid"
+
+        # Longitudinal delay (NEW)
+        longitudinal_lag = ld.longitudinalDelayEstimate
+        longitudinal_valid_blocks = ld.longitudinalValidBlocks
+        longitudinal_status = ld.longitudinalStatus
+
+        # Return dict with both lateral and longitudinal delays
+        return {
+          'lateral': (lateral_lag, lateral_valid_blocks) if lateral_status == log.LiveDelayData.Status.estimated else None,
+          'longitudinal': (longitudinal_lag, longitudinal_valid_blocks) if longitudinal_status == log.LiveDelayData.Status.estimated else None,
+        }
     except Exception as e:
       cloudlog.error(f"Failed to retrieve initial lag: {e}")
       params.remove("LiveDelay")
 
   return None
+
+
+def apply_learned_longitudinal_delay(CP: car.CarParams, params: Params) -> car.CarParams:
+  """
+  Apply learned longitudinal delay to CarParams for improved MPC velocity extraction accuracy
+
+  This function loads the learned longitudinal delay from persistent storage and updates
+  CarParams.longitudinalActuatorDelay if the learned value meets confidence thresholds.
+
+  Returns: Updated CarParams with learned delay, or original CP if no valid learned delay
+  """
+  initial_lag_data = retrieve_initial_lag(params, CP)
+
+  if initial_lag_data is None or initial_lag_data.get('longitudinal') is None:
+    cloudlog.info(f"No learned longitudinal delay available, using default: {CP.longitudinalActuatorDelay:.3f}s")
+    return CP
+
+  learned_delay, valid_blocks = initial_lag_data['longitudinal']
+
+  # Sanity check: Learned delay must be reasonable (0.05s to 1.0s)
+  if not (0.05 <= learned_delay <= 1.0):
+    cloudlog.warning(f"Learned longitudinal delay {learned_delay:.3f}s outside valid range [0.05s, 1.0s], using default")
+    return CP
+
+  # Require minimum confidence (at least BLOCK_NUM_NEEDED valid blocks)
+  if valid_blocks < BLOCK_NUM_NEEDED:
+    cloudlog.info(f"Learned longitudinal delay confidence too low ({valid_blocks} blocks < {BLOCK_NUM_NEEDED} required), using default")
+    return CP
+
+  # Update CarParams with learned delay (CP is mutable)
+  original_delay = CP.longitudinalActuatorDelay
+  CP.longitudinalActuatorDelay = learned_delay
+
+  cloudlog.info(f"Applied learned longitudinal delay: {original_delay:.3f}s → {learned_delay:.3f}s ({valid_blocks} valid blocks)")
+
+  return CP
 
 
 def main():
@@ -364,15 +628,28 @@ def main():
   DEBUG = bool(int(os.getenv("DEBUG", "0")))
 
   pm = messaging.PubMaster(['liveDelay'])
-  sm = messaging.SubMaster(['livePose', 'liveCalibration', 'carState', 'controlsState', 'carControl'], poll='livePose')
+  sm = messaging.SubMaster(['livePose', 'liveCalibration', 'carState', 'controlsState', 'carControl', 'modelV2', 'longitudinalPlan'], poll='livePose')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
 
+  # Initialize lateral lag learner (existing)
   lag_learner = LateralLagEstimator(CP, 1. / SERVICE_LIST['livePose'].frequency)
+
+  # Initialize longitudinal lag learner (NEW)
+  long_lag_learner = LongitudinalLagEstimator(CP, 1. / 20.0)  # 20Hz for modelV2
+
+  # Load learned delays from persistent storage and initialize both learners
   if (initial_lag_params := retrieve_initial_lag(params, CP)) is not None:
-    lag, valid_blocks = initial_lag_params
-    lag_learner.reset(lag, valid_blocks)
+    if initial_lag_params.get('lateral') is not None:
+      lateral_lag, lateral_valid_blocks = initial_lag_params['lateral']
+      lag_learner.reset(lateral_lag, lateral_valid_blocks)
+      cloudlog.info(f"Loaded learned lateral delay: {lateral_lag:.3f}s ({lateral_valid_blocks} valid blocks)")
+
+    if initial_lag_params.get('longitudinal') is not None:
+      longitudinal_lag, longitudinal_valid_blocks = initial_lag_params['longitudinal']
+      long_lag_learner.reset(longitudinal_lag, longitudinal_valid_blocks)
+      # cloudlog.info is already in reset() method
 
   while True:
     sm.update()
@@ -381,12 +658,41 @@ def main():
         if sm.updated[which]:
           t = sm.logMonoTime[which] * 1e-9
           lag_learner.handle_log(t, which, sm[which])
+
+          # Update longitudinal lag learner with relevant messages
+          if which in long_lag_learner.inputs:
+            long_lag_learner.handle_log(t, which, sm[which])
+
       lag_learner.update_points()
+      long_lag_learner.update_points()
 
     # 4Hz driven by livePose
     if sm.frame % 5 == 0:
       lag_learner.update_estimate()
+      long_lag_learner.update_estimate()
+
+      # Get lateral delay message
       lag_msg = lag_learner.get_msg(sm.all_checks(), DEBUG)
+
+      # Add longitudinal delay data to the message
+      longitudinal_data = long_lag_learner.get_longitudinal_msg_data(DEBUG)
+      liveDelay = lag_msg.liveDelay
+
+      # Set longitudinal fields
+      liveDelay.longitudinalDelay = longitudinal_data['longitudinalDelay']
+      liveDelay.longitudinalDelayEstimate = longitudinal_data['longitudinalDelayEstimate']
+      liveDelay.longitudinalDelayEstimateStd = longitudinal_data['longitudinalDelayEstimateStd']
+      liveDelay.longitudinalValidBlocks = longitudinal_data['longitudinalValidBlocks']
+      liveDelay.longitudinalStatus = longitudinal_data['longitudinalStatus']
+      liveDelay.longitudinalCalPerc = longitudinal_data['longitudinalCalPerc']
+      liveDelay.longitudinalPoints = longitudinal_data['longitudinalPoints']
+
+      # Set vision-CAN safety validation fields
+      liveDelay.visionSpeed = longitudinal_data['visionSpeed']
+      liveDelay.canSpeed = longitudinal_data['canSpeed']
+      liveDelay.visionCanDiff = longitudinal_data['visionCanDiff']
+      liveDelay.visionCanSafetyPassed = longitudinal_data['visionCanSafetyPassed']
+
       lag_msg_dat = lag_msg.to_bytes()
       pm.send('liveDelay', lag_msg_dat)
 
