@@ -58,6 +58,10 @@ STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
 CRUISE_MAX_ACCEL = 1.6
 
+# Stationary vehicle safety parameters
+STATIONARY_THRESHOLD = 2.0  # m/s - consider vehicle stationary/slowing below this speed (~7 kph)
+STATIONARY_MIN_BUFFER = 10.0  # m - minimum safe distance to maintain from stationary vehicles
+
 def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
   if personality==log.LongitudinalPersonality.relaxed:
     return 1.0
@@ -80,7 +84,21 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard):
     raise NotImplementedError("Longitudinal personality not supported")
 
 def get_stopped_equivalence_factor(v_lead):
-  return (v_lead**2) / (2 * COMFORT_BRAKE)
+  """
+  Calculate stopping distance equivalence for lead vehicle.
+  For stationary vehicles (v_lead < STATIONARY_THRESHOLD), add minimum safe buffer.
+  """
+  base_factor = (v_lead**2) / (2 * COMFORT_BRAKE)
+
+  # For stationary or very slow vehicles, ensure minimum safe buffer
+  if v_lead < STATIONARY_THRESHOLD:
+    # Blend between base_factor and minimum buffer based on lead speed
+    # At v_lead=0: use full STATIONARY_MIN_BUFFER
+    # At v_lead=STATIONARY_THRESHOLD: blend smoothly to base calculation
+    blend_ratio = v_lead / STATIONARY_THRESHOLD
+    return base_factor + (1.0 - blend_ratio) * STATIONARY_MIN_BUFFER
+
+  return base_factor
 
 def get_safe_obstacle_distance(v_ego, t_follow):
   return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
