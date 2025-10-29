@@ -5,6 +5,14 @@
 #include <vector>
 
 #include <QDebug>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMap>
+#include <QProcess>
+#include <QProgressDialog>
+#include <QRegularExpression>
 
 #include "common/watchdog.h"
 #include "common/util.h"
@@ -620,11 +628,30 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   addItem(curve_speed_details_btn);
   curve_speed_details_btn->setVisible(false);  // Initially hidden
 
+  // Driving model selector button
+  driving_model_selector_btn = new ButtonControl(tr("Driving Model"), tr("SELECT"));
+  QObject::connect(driving_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDrivingModelSelector);
+  addItem(driving_model_selector_btn);
+
+  // Driver monitoring model selector button
+  dm_model_selector_btn = new ButtonControl(tr("DM Model"), tr("SELECT"));
+  QObject::connect(dm_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDMModelSelector);
+  addItem(dm_model_selector_btn);
+
+  // Download models button (hidden until updates available)
+  download_models_btn = new ButtonControl(tr("Download Models"), tr("DOWNLOAD"));
+  QObject::connect(download_models_btn, &ButtonControl::clicked, this, &VehiclePanel::checkAndDownloadModels);
+  addItem(download_models_btn);
+  download_models_btn->setVisible(false);  // Hidden by default
+
   // Set up UI state updates to show/hide BMW-specific controls
   QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
-  
+
   // Initial update
   updateVehicleInfo();
+
+  // Check for model updates
+  checkForModelUpdates();
 }
 
 void VehiclePanel::openPersonalizedDetails() {
@@ -1074,7 +1101,186 @@ void VehiclePanel::openCurveSpeedDetails() {
 
   dialog->setMinimumSize(1000, 1000);
   dialog->exec();
-  delete dialog;
+}
+
+void VehiclePanel::openDrivingModelSelector() {
+  const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
+
+  while (true) {
+    // Get available driving models with dates
+    QProcess process;
+    process.start("python3", QStringList() << script_path << "--type" << "driving" << "list-with-dates");
+    process.waitForFinished(5000);
+
+    QString output = process.readAllStandardOutput();
+    QStringList models = output.split('\n', Qt::SkipEmptyParts);
+
+    if (models.isEmpty()) {
+      return;
+    }
+
+    // Get current active model (returns name without date)
+    QProcess active_process;
+    active_process.start("python3", QStringList() << script_path << "--type" << "driving" << "active");
+    active_process.waitForFinished(3000);
+    QString active_name = active_process.readAllStandardOutput().trimmed();
+
+    // Find the matching entry in models list (which includes dates)
+    QString current_with_date = active_name;  // Default fallback
+    QRegularExpression date_pattern(" \\(\\d{4}-\\d{2}-\\d{2}\\)$");
+    for (const QString &model : models) {
+      QString model_name = QString(model).remove(date_pattern);
+      if (model_name == active_name) {
+        current_with_date = model;
+        break;
+      }
+    }
+
+    // Show selection dialog with properly formatted active model
+    QString selection = MultiOptionDialog::getSelection(tr("Select a driving model"), models, current_with_date, this);
+    if (selection.isEmpty()) {
+      // User cancelled
+      return;
+    }
+
+    // Extract model name without date (format: "Name (YYYY-MM-DD)")
+    QString model_name = QString(selection).remove(date_pattern);
+
+    // Ask what to do with selected model
+    QStringList actions;
+    if (selection != current_with_date) {
+      actions << tr("Select") << tr("Delete") << tr("Cancel");
+    } else {
+      // Can't select or delete active model
+      actions << tr("Delete") << tr("Cancel");
+    }
+
+    QString action = MultiOptionDialog::getSelection(
+      tr("What would you like to do with") + "\n" + selection + "?",
+      actions, "", this);
+
+    if (action == tr("Select")) {
+      // Swap to selected model (use name without date)
+      QProcess swap_process;
+      swap_process.start("python3", QStringList() << script_path << "--type" << "driving" << "swap" << model_name);
+      swap_process.waitForFinished(10000);
+
+      // Update button value with date format
+      driving_model_selector_btn->setValue(selection);
+
+      // Prompt for restart
+      if (ConfirmationDialog::confirm(tr("Model swapped successfully. Restart openpilot now?"), tr("Restart"), this)) {
+        params.putBool("DoReboot", true);
+      }
+      return;
+    } else if (action == tr("Delete")) {
+      // Confirm deletion
+      if (ConfirmationDialog::confirm(tr("Delete") + " " + selection + "?", tr("Delete"), this)) {
+        QProcess delete_process;
+        delete_process.start("python3", QStringList() << script_path << "--type" << "driving" << "delete" << model_name);
+        delete_process.waitForFinished(10000);
+
+        QString error = delete_process.readAllStandardError();
+        if (!error.isEmpty()) {
+          ConfirmationDialog::alert(error, this);
+        }
+        // Continue loop to show updated list
+      }
+    } else {
+      // Cancel or empty - return to settings
+      return;
+    }
+  }
+}
+
+void VehiclePanel::openDMModelSelector() {
+  const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
+
+  while (true) {
+    // Get available DM models with dates
+    QProcess process;
+    process.start("python3", QStringList() << script_path << "--type" << "dm" << "list-with-dates");
+    process.waitForFinished(5000);
+
+    QString output = process.readAllStandardOutput();
+    QStringList models = output.split('\n', Qt::SkipEmptyParts);
+
+    if (models.isEmpty()) {
+      return;
+    }
+
+    // Get current active model (returns name without date)
+    QProcess active_process;
+    active_process.start("python3", QStringList() << script_path << "--type" << "dm" << "active");
+    active_process.waitForFinished(3000);
+    QString active_name = active_process.readAllStandardOutput().trimmed();
+
+    // Find the matching entry in models list (which includes dates)
+    QString current_with_date = active_name;  // Default fallback
+    QRegularExpression date_pattern(" \\(\\d{4}-\\d{2}-\\d{2}\\)$");
+    for (const QString &model : models) {
+      QString model_name = QString(model).remove(date_pattern);
+      if (model_name == active_name) {
+        current_with_date = model;
+        break;
+      }
+    }
+
+    // Show selection dialog with properly formatted active model
+    QString selection = MultiOptionDialog::getSelection(tr("Select a DM model"), models, current_with_date, this);
+    if (selection.isEmpty()) {
+      // User cancelled
+      return;
+    }
+
+    // Extract model name without date (format: "Name (YYYY-MM-DD)")
+    QString model_name = QString(selection).remove(date_pattern);
+
+    // Ask what to do with selected model
+    QStringList actions;
+    if (selection != current_with_date) {
+      actions << tr("Select") << tr("Delete") << tr("Cancel");
+    } else {
+      // Can't select or delete active model
+      actions << tr("Delete") << tr("Cancel");
+    }
+
+    QString action = MultiOptionDialog::getSelection(
+      tr("What would you like to do with") + "\n" + selection + "?",
+      actions, "", this);
+
+    if (action == tr("Select")) {
+      // Swap to selected model (use name without date)
+      QProcess swap_process;
+      swap_process.start("python3", QStringList() << script_path << "--type" << "dm" << "swap" << model_name);
+      swap_process.waitForFinished(10000);
+
+      // Update button value with date format
+      dm_model_selector_btn->setValue(selection);
+
+      // Prompt for restart
+      if (ConfirmationDialog::confirm(tr("Model swapped successfully. Restart openpilot now?"), tr("Restart"), this)) {
+        params.putBool("DoReboot", true);
+      }
+      return;
+    } else if (action == tr("Delete")) {
+      // Confirm deletion
+      if (ConfirmationDialog::confirm(tr("Delete") + " " + selection + "?", tr("Delete"), this)) {
+        QProcess delete_process;
+        delete_process.start("python3", QStringList() << script_path << "--type" << "dm" << "delete" << model_name);
+        delete_process.waitForFinished(10000);
+
+        QString error = delete_process.readAllStandardError();
+        if (!error.isEmpty()) {
+          ConfirmationDialog::alert(error, this);
+        }
+        // Continue loop to show updated list
+      }
+    } else {
+      // Cancel or empty - return to settings
+      return;
+    }
+  }
 }
 
 void VehiclePanel::updateState(const UIState &s) {
@@ -1277,4 +1483,178 @@ void VehiclePanel::updateState(const UIState &s) {
 void VehiclePanel::updateVehicleInfo() {
   // Update vehicle information display - will be updated with actual fingerprint in updateState()
   vehicle_info_lbl->setText(tr("Vehicle Diagnostics"));
+
+  const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
+  QRegularExpression date_pattern(" \\(\\d{4}-\\d{2}-\\d{2}\\)$");
+
+  // Update driving model button with date
+  QProcess driving_active;
+  driving_active.start("python3", QStringList() << script_path << "--type" << "driving" << "active");
+  if (driving_active.waitForFinished(3000)) {
+    QString active_name = driving_active.readAllStandardOutput().trimmed();
+    if (!active_name.isEmpty() && active_name != "No active driving model") {
+      // Get list with dates and find matching entry
+      QProcess driving_list;
+      driving_list.start("python3", QStringList() << script_path << "--type" << "driving" << "list-with-dates");
+      if (driving_list.waitForFinished(3000)) {
+        QString output = driving_list.readAllStandardOutput();
+        QStringList models = output.split('\n', Qt::SkipEmptyParts);
+        QString model_with_date = active_name;  // Fallback
+        for (const QString &model : models) {
+          QString model_name = QString(model).remove(date_pattern);
+          if (model_name == active_name) {
+            model_with_date = model;
+            break;
+          }
+        }
+        driving_model_selector_btn->setValue(model_with_date);
+      }
+    }
+  }
+
+  // Update DM model button with date
+  QProcess dm_active;
+  dm_active.start("python3", QStringList() << script_path << "--type" << "dm" << "active");
+  if (dm_active.waitForFinished(3000)) {
+    QString active_name = dm_active.readAllStandardOutput().trimmed();
+    if (!active_name.isEmpty() && active_name != "No active dm model") {
+      // Get list with dates and find matching entry
+      QProcess dm_list;
+      dm_list.start("python3", QStringList() << script_path << "--type" << "dm" << "list-with-dates");
+      if (dm_list.waitForFinished(3000)) {
+        QString output = dm_list.readAllStandardOutput();
+        QStringList models = output.split('\n', Qt::SkipEmptyParts);
+        QString model_with_date = active_name;  // Fallback
+        for (const QString &model : models) {
+          QString model_name = QString(model).remove(date_pattern);
+          if (model_name == active_name) {
+            model_with_date = model;
+            break;
+          }
+        }
+        dm_model_selector_btn->setValue(model_with_date);
+      }
+    }
+  }
+}
+
+void VehiclePanel::checkForModelUpdates() {
+  // Check if new models are available for download
+  const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
+
+  QProcess process;
+  process.start("python3", QStringList() << script_path << "check-updates");
+  if (process.waitForFinished(5000)) {
+    QString output = process.readAllStandardOutput();
+
+    // Parse JSON output
+    QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
+    if (!doc.isNull() && doc.isObject()) {
+      QJsonObject obj = doc.object();
+      int total = obj["total"].toInt();
+
+      // Show download button only if new models are available
+      download_models_btn->setVisible(total > 0);
+
+      if (total > 0) {
+        download_models_btn->setValue(QString("%1 new").arg(total));
+      }
+    }
+  }
+}
+
+void VehiclePanel::checkAndDownloadModels() {
+  // Get list of new models
+  const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
+
+  QProcess process;
+  process.start("python3", QStringList() << script_path << "check-updates");
+  if (!process.waitForFinished(5000)) {
+    ConfirmationDialog::alert(tr("Failed to check for updates"), this);
+    return;
+  }
+
+  QString output = process.readAllStandardOutput();
+  QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
+
+  if (doc.isNull() || !doc.isObject()) {
+    ConfirmationDialog::alert(tr("Invalid update data"), this);
+    return;
+  }
+
+  QJsonObject obj = doc.object();
+  QJsonArray driving_models = obj["driving"].toArray();
+  QJsonArray dm_models = obj["dm"].toArray();
+
+  if (driving_models.isEmpty() && dm_models.isEmpty()) {
+    ConfirmationDialog::alert(tr("No new models available"), this);
+    return;
+  }
+
+  // Build selection list with formatted names
+  QStringList model_display_list;
+  QMap<QString, QJsonObject> model_map;  // Map display name to model data
+
+  for (const QJsonValue &val : driving_models) {
+    QJsonObject model_obj = val.toObject();
+    QString name = model_obj["name"].toString();
+    QString date = model_obj["date"].toString();
+    QString display = QString("🚗 %1 (%2)").arg(name).arg(date);
+    model_display_list << display;
+    model_map[display] = model_obj;
+  }
+  for (const QJsonValue &val : dm_models) {
+    QJsonObject model_obj = val.toObject();
+    QString name = model_obj["name"].toString();
+    QString date = model_obj["date"].toString();
+    QString display = QString("👁️ %1 (%2)").arg(name).arg(date);
+    model_display_list << display;
+    model_map[display] = model_obj;
+  }
+
+  // Show selection dialog (like model selector)
+  QString selection = MultiOptionDialog::getSelection(
+    tr("Select model to download"),
+    model_display_list,
+    "",  // No current selection
+    this);
+
+  if (selection.isEmpty()) {
+    return;  // User cancelled
+  }
+
+  // Get selected model data
+  QJsonObject selected_model = model_map[selection];
+  QString model_id = selected_model["id"].toString();
+  QString model_name = selected_model["name"].toString();
+  QString model_type = selected_model["type"].toString();
+
+  // Create progress dialog
+  QProgressDialog progress(tr("Downloading %1...").arg(model_name), tr("Cancel"), 0, 1, this);
+  progress.setWindowModality(Qt::WindowModal);
+  progress.setMinimumDuration(0);
+  progress.setValue(0);
+
+  // Download the selected model
+  QProcess download_process;
+  download_process.start("python3", QStringList() << script_path << "download" << model_id << "--type" << model_type);
+
+  if (!download_process.waitForFinished(120000)) {  // 2 minute timeout
+    ConfirmationDialog::alert(tr("Download timeout for %1").arg(model_name), this);
+    return;
+  }
+
+  progress.setValue(1);
+
+  if (download_process.exitCode() != 0) {
+    QString error = download_process.readAllStandardError();
+    ConfirmationDialog::alert(tr("Download failed for %1:\n%2").arg(model_name).arg(error), this);
+    return;
+  }
+
+  // Success - update vehicle info and refresh
+  updateVehicleInfo();
+  checkForModelUpdates();
+
+  // Return to panel automatically (no success alert)
 }

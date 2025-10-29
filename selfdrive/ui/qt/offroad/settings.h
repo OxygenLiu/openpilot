@@ -112,10 +112,16 @@ private slots:
   void openLongitudinalDelayDetails();
   void openLateralDelayDetails();
   void openCurveSpeedDetails();
+  void openDrivingModelSelector();
+  void openDMModelSelector();
+  void checkAndDownloadModels();
   void updateState(const UIState &s);
 
 private:
   Params params;
+  ButtonControl *driving_model_selector_btn;
+  ButtonControl *dm_model_selector_btn;
+  ButtonControl *download_models_btn;
   LabelControl *vehicle_info_lbl;
   QWidget *bmw_vitals_widget;
   QLabel *coolant_lbl;
@@ -130,6 +136,7 @@ private:
   LabelControl *curve_speed_lbl;
   ButtonControl *curve_speed_details_btn;
   void updateVehicleInfo();
+  void checkForModelUpdates();
 };
 
 // Forward declaration
