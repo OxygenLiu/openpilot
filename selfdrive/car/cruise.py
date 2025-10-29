@@ -165,3 +165,8 @@ class VCruiseHelper:
       self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
 
     self.v_cruise_cluster_kph = self.v_cruise_kph
+
+    # Save the initialized speed to persistent storage for future RESUME button presses
+    # This ensures RESUME can restore the speed even if user never adjusted it with +/-
+    mode_key = "ExperimentalModeSpeed" if experimental_mode else "NormalModeSpeed"
+    self.params.put(mode_key, int(self.v_cruise_kph))
