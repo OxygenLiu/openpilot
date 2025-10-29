@@ -102,5 +102,24 @@ private:
   ParamWatcher *fs_watch;
 };
 
+class VehiclePanel : public ListWidget {
+  Q_OBJECT
+public:
+  explicit VehiclePanel(SettingsWindow *parent);
+
+private slots:
+  void openBmwDiagnostics();
+  void updateState(const UIState &s);
+
+private:
+  Params params;
+  ButtonControl *bmw_diagnostics_btn;
+  LabelControl *vehicle_info_lbl;
+  LabelControl *coolant_temp_lbl;
+  LabelControl *oil_temp_lbl;
+  LabelControl *dtc_status_lbl;
+  void updateVehicleInfo();
+};
+
 // Forward declaration
 class FirehosePanel;

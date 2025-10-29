@@ -61,8 +61,55 @@ static void update_state(UIState *s) {
   }
   scene.started = sm["deviceState"].getDeviceState().getStarted() && scene.ignition;
 
-  auto params = Params();
-  scene.recording_audio = params.getBool("RecordAudio") && scene.started;
+  // Update BMW diagnostic data from CarState
+  // Check if BMW car is detected (persist detection once found)
+  if (sm.updated("carParams") || (!scene.bmw_diagnostics_available && sm.valid("carParams"))) {
+    auto cp = sm["carParams"].getCarParams();
+    std::string fingerprint = cp.getCarFingerprint();
+    if (fingerprint.find("BMW_") == 0) {  // Check if fingerprint starts with "BMW_"
+      scene.bmw_diagnostics_available = true;
+      // Store the fingerprint for the UI to use
+      strncpy(scene.bmw_car_fingerprint, fingerprint.c_str(), sizeof(scene.bmw_car_fingerprint) - 1);
+      scene.bmw_car_fingerprint[sizeof(scene.bmw_car_fingerprint) - 1] = '\0';
+    }
+  }
+
+  // Update BMW diagnostic data whenever carState is available (if BMW detected)
+  if (scene.bmw_diagnostics_available && sm.updated("carState")) {
+    // Get real BMW temperature data from CarState during replay
+    auto cs = sm["carState"].getCarState();
+    scene.bmw_coolant_temp = cs.getEngineCoolantTemp();
+    scene.bmw_oil_temp = cs.getEngineOilTemp();
+
+    // Simulate additional BMW diagnostic data for demonstration
+    // In real implementation, these would come from UDS queries
+    scene.bmw_intake_air_temp = scene.bmw_coolant_temp - 15.0f + (rand() % 10 - 5);
+    scene.bmw_exhaust_gas_temp = scene.bmw_coolant_temp + 250.0f + (rand() % 50 - 25);
+    scene.bmw_fuel_rail_pressure = 4.0f + (rand() % 20) / 10.0f;  // 4.0-6.0 bar
+    scene.bmw_turbo_boost_pressure = 0.5f + (rand() % 15) / 10.0f;  // 0.5-2.0 bar
+    scene.bmw_engine_rpm = 800 + (rand() % 1000);  // 800-1800 RPM (idle range)
+    scene.bmw_engine_load = 10.0f + (rand() % 30);  // 10-40% load
+    scene.bmw_battery_voltage = 12.5f + (rand() % 15) / 10.0f;  // 12.5-14.0V
+
+    // BMW DME manages protection mode - we just display it
+    scene.bmw_protection_mode = 0;  // Normal (BMW DME controlled)
+    scene.bmw_thermal_stress = 0.0f;  // BMW DME managed
+
+    // Get real DTC data from BMW carstate via CarState messaging
+    scene.bmw_dtc_count = cs.getBmwDtcCount();
+    scene.bmw_dtc_active = (scene.bmw_dtc_count > 0);
+
+    // Copy DTC codes string (newline-separated)
+    auto dtc_text = cs.getBmwActiveDtcs();
+    strncpy(scene.bmw_active_dtcs, dtc_text.cStr(), sizeof(scene.bmw_active_dtcs) - 1);
+    scene.bmw_active_dtcs[sizeof(scene.bmw_active_dtcs) - 1] = '\0';
+    // Copy DTC clear status
+    auto clear_status_text = cs.getBmwDtcClearStatus();
+    strncpy(scene.bmw_dtc_clear_status, clear_status_text.cStr(), sizeof(scene.bmw_dtc_clear_status) - 1);
+    scene.bmw_dtc_clear_status[sizeof(scene.bmw_dtc_clear_status) - 1] = '\0';
+  }
+
+  scene.recording_audio = Params().getBool("RecordAudio") && scene.started;
 }
 
 void ui_update_params(UIState *s) {

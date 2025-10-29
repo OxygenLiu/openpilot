@@ -24,7 +24,7 @@ void Sidebar::drawMetric(QPainter &p, const QPair<QString, QString> &label, QCol
   p.drawText(rect.adjusted(22, 0, 0, 0), Qt::AlignCenter, label.first + "\n" + label.second);
 }
 
-Sidebar::Sidebar(QWidget *parent) : QFrame(parent), onroad(false), flag_pressed(false), settings_pressed(false), mic_indicator_pressed(false) {
+Sidebar::Sidebar(QWidget *parent) : QFrame(parent), onroad(false), flag_pressed(false), settings_pressed(false), mic_indicator_pressed(false), bmw_diagnostic_pressed(false) {
   home_img = loadPixmap("../assets/images/button_home.png", home_btn.size());
   flag_img = loadPixmap("../assets/images/button_flag.png", home_btn.size());
   settings_img = loadPixmap("../assets/images/button_settings.png", settings_btn.size(), Qt::IgnoreAspectRatio);
@@ -52,12 +52,15 @@ void Sidebar::mousePressEvent(QMouseEvent *event) {
   } else if (recording_audio && mic_indicator_btn.contains(event->pos())) {
     mic_indicator_pressed = true;
     update();
+  } else if (bmw_diagnostic_btn.contains(event->pos())) {
+    bmw_diagnostic_pressed = true;
+    update();
   }
 }
 
 void Sidebar::mouseReleaseEvent(QMouseEvent *event) {
-  if (flag_pressed || settings_pressed || mic_indicator_pressed) {
-    flag_pressed = settings_pressed = mic_indicator_pressed = false;
+  if (flag_pressed || settings_pressed || mic_indicator_pressed || bmw_diagnostic_pressed) {
+    flag_pressed = settings_pressed = mic_indicator_pressed = bmw_diagnostic_pressed = false;
     update();
   }
   if (onroad && home_btn.contains(event->pos())) {
@@ -68,6 +71,8 @@ void Sidebar::mouseReleaseEvent(QMouseEvent *event) {
     emit openSettings();
   } else if (recording_audio && mic_indicator_btn.contains(event->pos())) {
     emit openSettings(2, "RecordAudio");
+  } else if (bmw_diagnostic_btn.contains(event->pos())) {
+    emit openSettings(3);  // Open Vehicle panel (index 3 in settings)
   }
 }
 
@@ -109,9 +114,26 @@ void Sidebar::updateState(const UIState &s) {
   setProperty("tempStatus", QVariant::fromValue(tempStatus));
 
   ItemStatus pandaStatus = {{tr("VEHICLE"), tr("ONLINE")}, good_color};
-  if (s.scene.pandaType == cereal::PandaState::PandaType::UNKNOWN) {
+  
+  // Show BMW diagnostic status if available, otherwise show panda status
+  if (s.scene.bmw_diagnostics_available) {
+    // BMW diagnostic mode - show temperature status (DME handles protection)
+    QString status_text;
+    QColor status_color = good_color;
+    
+    if (s.scene.bmw_coolant_temp > 95 || s.scene.bmw_oil_temp > 125) {
+      status_text = QString::number((int)s.scene.bmw_coolant_temp) + "°C";
+      status_color = warning_color;
+    } else {
+      status_text = QString::number((int)s.scene.bmw_coolant_temp) + "°C";
+      status_color = good_color;
+    }
+    
+    pandaStatus = {{tr("BMW"), status_text}, status_color};
+  } else if (s.scene.pandaType == cereal::PandaState::PandaType::UNKNOWN) {
     pandaStatus = {{tr("NO"), tr("PANDA")}, danger_color};
   }
+  
   setProperty("pandaStatus", QVariant::fromValue(pandaStatus));
 
   setProperty("recordingAudio", s.scene.recording_audio);

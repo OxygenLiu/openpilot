@@ -15,6 +15,7 @@
 #include "selfdrive/ui/qt/widgets/scrollview.h"
 #include "selfdrive/ui/qt/offroad/developer_panel.h"
 #include "selfdrive/ui/qt/offroad/firehose.h"
+#include "selfdrive/ui/qt/widgets/bmw_diagnostics.h"
 
 TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
   // param, title, desc, icon, restart needed
@@ -472,6 +473,7 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
     {tr("Device"), device},
     {tr("Network"), networking},
     {tr("Toggles"), toggles},
+    {tr("Vehicle"), new VehiclePanel(this)},
     {tr("Software"), new SoftwarePanel(this)},
     {tr("Firehose"), new FirehosePanel(this)},
     {tr("Developer"), new DeveloperPanel(this)},
@@ -534,4 +536,117 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
       border-radius: 30px;
     }
   )");
+}
+
+VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
+  // Vehicle information label
+  vehicle_info_lbl = new LabelControl(tr("Vehicle Information"), "");
+  addItem(vehicle_info_lbl);
+  
+  // Coolant Temperature Display (prominent)
+  coolant_temp_lbl = new LabelControl(tr("Coolant Temperature"), tr("--°C"));
+  addItem(coolant_temp_lbl);
+  
+  // Oil Temperature Display (prominent)
+  oil_temp_lbl = new LabelControl(tr("Oil Temperature"), tr("--°C"));
+  addItem(oil_temp_lbl);
+  
+  // DTC Status Display
+  dtc_status_lbl = new LabelControl(tr("Diagnostic Codes"), tr("No codes"));
+  addItem(dtc_status_lbl);
+  
+  // BMW diagnostics button for detailed view (DTC codes)
+  bmw_diagnostics_btn = new ButtonControl(tr("View DTC Codes"), tr("View active diagnostic trouble codes"));
+  QObject::connect(bmw_diagnostics_btn, &ButtonControl::clicked, this, &VehiclePanel::openBmwDiagnostics);
+  addItem(bmw_diagnostics_btn);
+  
+  // Set up UI state updates to show/hide BMW-specific controls
+  QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
+  
+  // Initial update
+  updateVehicleInfo();
+}
+
+void VehiclePanel::openBmwDiagnostics() {
+  // Create and show BMW diagnostics dialog
+  BmwDiagnosticsDialog *dialog = new BmwDiagnosticsDialog(this);
+  
+  // Update with current UI state
+  dialog->updateData(*uiState());
+  
+  // Show dialog
+  dialog->exec();
+  
+  // Clean up
+  delete dialog;
+}
+
+void VehiclePanel::updateState(const UIState &s) {
+  // Update all BMW diagnostic displays
+  if (s.scene.bmw_diagnostics_available) {
+    // Update vehicle info title with actual BMW fingerprint if available
+    if (strlen(s.scene.bmw_car_fingerprint) > 0) {
+      QString fingerprint = QString::fromUtf8(s.scene.bmw_car_fingerprint);
+      vehicle_info_lbl->setText(QString("%1 Diagnostics").arg(fingerprint));
+    } else {
+      vehicle_info_lbl->setText("BMW E90 Diagnostics");
+    }
+    // Show all BMW diagnostic information
+    coolant_temp_lbl->setVisible(true);
+    oil_temp_lbl->setVisible(true);
+    dtc_status_lbl->setVisible(true);
+
+    // Only show DTC button when there are active codes
+    bmw_diagnostics_btn->setVisible(s.scene.bmw_dtc_count > 0);
+    
+    // Update Coolant Temperature with color coding
+    int coolant_temp = (int)s.scene.bmw_coolant_temp;
+    QString coolant_color = "white";
+    if (coolant_temp > 95) {
+      coolant_color = "#E22C2C";  // Red for high temp
+    } else if (coolant_temp > 85) {
+      coolant_color = "#DAB825";  // Yellow for warm
+    } else {
+      coolant_color = "#5CB85C";  // Green for normal
+    }
+    coolant_temp_lbl->setText(QString("%1°C").arg(coolant_temp));
+    coolant_temp_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 48px; }").arg(coolant_color));
+    
+    // Update Oil Temperature with color coding
+    int oil_temp = (int)s.scene.bmw_oil_temp;
+    QString oil_color = "white";
+    if (oil_temp > 125) {
+      oil_color = "#E22C2C";  // Red for high temp
+    } else if (oil_temp > 110) {
+      oil_color = "#DAB825";  // Yellow for warm
+    } else {
+      oil_color = "#5CB85C";  // Green for normal
+    }
+    oil_temp_lbl->setText(QString("%1°C").arg(oil_temp));
+    oil_temp_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 48px; }").arg(oil_color));
+    
+    // Update DTC Status
+    int dtc_count = s.scene.bmw_dtc_count;
+    if (dtc_count > 0) {
+      dtc_status_lbl->setText(QString("%1 active code%2").arg(dtc_count).arg(dtc_count > 1 ? "s" : ""));
+      dtc_status_lbl->setStyleSheet("QLabel { color: #E22C2C; font-weight: bold; font-size: 36px; }");  // Red for codes
+    } else {
+      dtc_status_lbl->setText(tr("No codes"));
+      dtc_status_lbl->setStyleSheet("QLabel { color: #5CB85C; font-weight: bold; font-size: 36px; }");  // Green for no codes
+    }
+    
+    // BMW DME handles all engine protection internally
+    
+  } else {
+    // Hide BMW-specific displays when no BMW detected
+    coolant_temp_lbl->setVisible(false);
+    oil_temp_lbl->setVisible(false);
+    dtc_status_lbl->setVisible(false);
+    bmw_diagnostics_btn->setVisible(false);
+  }
+}
+
+void VehiclePanel::updateVehicleInfo() {
+  // Update vehicle information display - will be updated with actual fingerprint in updateState()
+  vehicle_info_lbl->setText(tr("Vehicle Diagnostics"));
 }

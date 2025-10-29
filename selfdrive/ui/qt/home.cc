@@ -241,3 +241,4 @@ void OffroadHome::refresh() {
     alert_notif->setText(QString::number(alerts) + (alerts > 1 ? tr(" ALERTS") : tr(" ALERT")));
   }
 }
+
