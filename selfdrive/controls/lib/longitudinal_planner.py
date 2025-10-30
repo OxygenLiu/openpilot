@@ -112,7 +112,7 @@ def calculate_curve_speed_limit(model_v2, v_ego, CP):
 class LongitudinalPlanner:
   def __init__(self, CP, init_v=0.0, init_a=0.0, dt=DT_MDL):
     self.CP = CP
-    self.mpc = LongitudinalMpc(dt=dt)
+    self.mpc = LongitudinalMpc(dt=dt, CP=CP)
     # TODO remove mpc modes when TR released
     self.mpc.mode = 'acc'
     self.fcw = False
