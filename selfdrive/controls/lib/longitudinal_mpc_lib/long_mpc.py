@@ -87,18 +87,24 @@ def get_stopped_equivalence_factor(v_lead):
   """
   Calculate stopping distance equivalence for lead vehicle.
   For stationary vehicles (v_lead < STATIONARY_THRESHOLD), add minimum safe buffer.
+
+  Args:
+    v_lead: Lead vehicle velocity (scalar or array)
+
+  Returns:
+    Stopping distance equivalence factor (same shape as v_lead)
   """
   base_factor = (v_lead**2) / (2 * COMFORT_BRAKE)
 
   # For stationary or very slow vehicles, ensure minimum safe buffer
-  if v_lead < STATIONARY_THRESHOLD:
-    # Blend between base_factor and minimum buffer based on lead speed
-    # At v_lead=0: use full STATIONARY_MIN_BUFFER
-    # At v_lead=STATIONARY_THRESHOLD: blend smoothly to base calculation
-    blend_ratio = v_lead / STATIONARY_THRESHOLD
-    return base_factor + (1.0 - blend_ratio) * STATIONARY_MIN_BUFFER
+  # Use np.where to handle both scalar and array inputs
+  blend_ratio = np.clip(v_lead / STATIONARY_THRESHOLD, 0.0, 1.0)
+  stationary_buffer = (1.0 - blend_ratio) * STATIONARY_MIN_BUFFER
 
-  return base_factor
+  # Apply buffer only when v_lead < STATIONARY_THRESHOLD
+  return np.where(v_lead < STATIONARY_THRESHOLD,
+                  base_factor + stationary_buffer,
+                  base_factor)
 
 def get_safe_obstacle_distance(v_ego, t_follow):
   return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
