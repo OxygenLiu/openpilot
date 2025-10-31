@@ -554,12 +554,22 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   // DTC Status Display
   dtc_status_lbl = new LabelControl(tr("Diagnostic Codes"), tr("No codes"));
   addItem(dtc_status_lbl);
-  
+
   // BMW diagnostics button for detailed view (DTC codes)
   bmw_diagnostics_btn = new ButtonControl(tr("View DTC Codes"), tr("View active diagnostic trouble codes"));
   QObject::connect(bmw_diagnostics_btn, &ButtonControl::clicked, this, &VehiclePanel::openBmwDiagnostics);
   addItem(bmw_diagnostics_btn);
-  
+
+  // Personalized longitudinal learning display
+  personalized_learning_lbl = new LabelControl(tr("Personalized Following"), tr("Not learning"));
+  addItem(personalized_learning_lbl);
+
+  // Details button for learned scales (only shown when data is learned)
+  personalized_details_btn = new ButtonControl(tr("View Learned Scales"), tr("View personalized T_FOLLOW scales"));
+  QObject::connect(personalized_details_btn, &ButtonControl::clicked, this, &VehiclePanel::openPersonalizedDetails);
+  addItem(personalized_details_btn);
+  personalized_details_btn->setVisible(false);  // Initially hidden
+
   // Set up UI state updates to show/hide BMW-specific controls
   QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
   
@@ -570,34 +580,145 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
 void VehiclePanel::openBmwDiagnostics() {
   // Create and show BMW diagnostics dialog
   BmwDiagnosticsDialog *dialog = new BmwDiagnosticsDialog(this);
-  
+
   // Update with current UI state
   dialog->updateData(*uiState());
-  
+
   // Show dialog
   dialog->exec();
-  
+
   // Clean up
   delete dialog;
 }
 
-void VehiclePanel::updateState(const UIState &s) {
-  // Update all BMW diagnostic displays
-  if (s.scene.bmw_diagnostics_available) {
-    // Update vehicle info title with actual BMW fingerprint if available
-    if (strlen(s.scene.bmw_car_fingerprint) > 0) {
-      QString fingerprint = QString::fromUtf8(s.scene.bmw_car_fingerprint);
-      vehicle_info_lbl->setText(QString("%1 Diagnostics").arg(fingerprint));
-    } else {
-      vehicle_info_lbl->setText("BMW E90 Diagnostics");
-    }
-    // Show all BMW diagnostic information
-    coolant_temp_lbl->setVisible(true);
-    oil_temp_lbl->setVisible(true);
-    dtc_status_lbl->setVisible(true);
+void VehiclePanel::openPersonalizedDetails() {
+  const UIState &s = *uiState();
 
-    // Only show DTC button when there are active codes
-    bmw_diagnostics_btn->setVisible(s.scene.bmw_dtc_count > 0);
+  // Create dialog
+  QDialog *dialog = new QDialog(this);
+  dialog->setWindowTitle(tr("Personalized T_FOLLOW Scales"));
+  dialog->setStyleSheet("QDialog { background-color: #292929; }");
+
+  QVBoxLayout *main_layout = new QVBoxLayout(dialog);
+  main_layout->setContentsMargins(50, 50, 50, 50);
+  main_layout->setSpacing(30);
+
+  // Title
+  QLabel *title = new QLabel(tr("Learned Following Distances"), dialog);
+  title->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  title->setAlignment(Qt::AlignCenter);
+  main_layout->addWidget(title);
+
+  // VREL interval labels
+  const char* interval_labels[5] = {
+    "0-10 kph",
+    "10-20 kph",
+    "20-30 kph",
+    "30-40 kph",
+    "40+ kph"
+  };
+
+  // Create table-like display
+  for (int i = 0; i < 5; i++) {
+    QFrame *interval_frame = new QFrame(dialog);
+    interval_frame->setStyleSheet("QFrame { background-color: #1A1A1A; border-radius: 10px; padding: 20px; }");
+
+    QHBoxLayout *interval_layout = new QHBoxLayout(interval_frame);
+
+    // Interval label
+    QLabel *interval_lbl = new QLabel(tr(interval_labels[i]), interval_frame);
+    interval_lbl->setStyleSheet("QLabel { font-size: 32px; color: white; }");
+    interval_layout->addWidget(interval_lbl);
+
+    interval_layout->addStretch();
+
+    // Scale value
+    float scale = s.scene.personalized_scales[i];
+    float t_follow = scale * 1.45;  // Baseline is 1.45s
+    QLabel *scale_lbl = new QLabel(QString("%1x (%2s)").arg(scale, 0, 'f', 2).arg(t_follow, 0, 'f', 2), interval_frame);
+    scale_lbl->setStyleSheet("QLabel { font-size: 36px; font-weight: bold; color: #5CB85C; }");
+    interval_layout->addWidget(scale_lbl);
+
+    interval_layout->addSpacing(40);
+
+    // Confidence indicator (valid blocks)
+    uint16_t blocks = s.scene.personalized_valid_blocks[i];
+    QString confidence_text = QString("%1/10").arg(blocks);
+    QString confidence_color = blocks >= 10 ? "#5CB85C" : (blocks >= 5 ? "#DAB825" : "#E22C2C");
+    QLabel *confidence_lbl = new QLabel(confidence_text, interval_frame);
+    confidence_lbl->setStyleSheet(QString("QLabel { font-size: 28px; color: %1; }").arg(confidence_color));
+    interval_layout->addWidget(confidence_lbl);
+
+    main_layout->addWidget(interval_frame);
+  }
+
+  // Explanation text
+  QLabel *explanation = new QLabel(tr("Scale factors multiply the baseline T_FOLLOW (1.45s) based on approach speed"), dialog);
+  explanation->setStyleSheet("QLabel { font-size: 24px; color: #999; }");
+  explanation->setAlignment(Qt::AlignCenter);
+  explanation->setWordWrap(true);
+  main_layout->addWidget(explanation);
+
+  // Close button
+  QPushButton *close_btn = new QPushButton(tr("Close"), dialog);
+  close_btn->setStyleSheet("QPushButton { font-size: 36px; padding: 20px; background-color: #5CB85C; color: white; border-radius: 10px; }");
+  QObject::connect(close_btn, &QPushButton::clicked, dialog, &QDialog::accept);
+  main_layout->addWidget(close_btn);
+
+  dialog->setMinimumSize(1000, 800);
+  dialog->exec();
+  delete dialog;
+}
+
+void VehiclePanel::updateState(const UIState &s) {
+  // Update vehicle info title
+  if (strlen(s.scene.bmw_car_fingerprint) > 0) {
+    QString fingerprint = QString::fromUtf8(s.scene.bmw_car_fingerprint);
+    vehicle_info_lbl->setText(QString("%1 Diagnostics").arg(fingerprint));
+  } else {
+    vehicle_info_lbl->setText("Vehicle Diagnostics");
+  }
+
+  // Always show personalized learning UI (not BMW-dependent)
+  QString status_text;
+  QString status_color;
+  bool show_details_btn = false;
+
+  switch(s.scene.personalized_status) {
+    case 0:  // unlearned
+      status_text = tr("Not learning");
+      status_color = "white";
+      break;
+    case 1:  // learning
+      status_text = QString("Learning: %1%").arg(s.scene.personalized_progress);
+      status_color = "#DAB825";  // Yellow
+      break;
+    case 2:  // learned
+      status_text = QString("Learned (%1%)").arg(s.scene.personalized_progress);
+      status_color = "#5CB85C";  // Green
+      show_details_btn = true;
+      break;
+    case 3:  // invalid
+      status_text = tr("Invalid data");
+      status_color = "#E22C2C";  // Red
+      break;
+    default:
+      status_text = tr("Unknown");
+      status_color = "white";
+  }
+
+  personalized_learning_lbl->setText(status_text);
+  personalized_learning_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(status_color));
+  personalized_learning_lbl->setVisible(true);  // Always visible
+  personalized_details_btn->setVisible(show_details_btn);
+
+  // BMW-specific displays (only when BMW detected)
+  if (s.scene.bmw_diagnostics_available) {
+    // Hide UDS-dependent displays (available in uds-dtc branch)
+    coolant_temp_lbl->setVisible(false);
+    oil_temp_lbl->setVisible(false);
+    dtc_status_lbl->setVisible(false);
+    bmw_diagnostics_btn->setVisible(false);
     
     // Update Coolant Temperature with color coding
     int coolant_temp = (int)s.scene.bmw_coolant_temp;
@@ -636,7 +757,6 @@ void VehiclePanel::updateState(const UIState &s) {
     }
     
     // BMW DME handles all engine protection internally
-    
   } else {
     // Hide BMW-specific displays when no BMW detected
     coolant_temp_lbl->setVisible(false);

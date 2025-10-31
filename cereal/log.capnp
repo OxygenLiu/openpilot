@@ -2312,10 +2312,24 @@ struct LiveDelayData {
   visionCanDiff @16 :Float32;
   visionCanSafetyPassed @17 :Bool;
 
+  # Personalized longitudinal T_FOLLOW scale factor learning
+  personalizedScales @18 :List(Float32);        # Learned scale factors for each VREL_BP interval
+  personalizedValidBlocks @19 :List(UInt16);    # Valid blocks per interval for confidence
+  personalizedProgress @20 :UInt8;              # Overall learning progress 0-100%
+  personalizedStatus @21 :PersonalizedStatus;   # Learning status
+  personalizedActiveInterval @22 :Int8;         # Currently learning interval (-1 if none)
+
   enum Status {
     unestimated @0;
     estimated @1;
     invalid @2;
+  }
+
+  enum PersonalizedStatus {
+    unlearned @0;      # No learned data yet
+    learning @1;       # Actively collecting data
+    learned @2;        # Sufficient confidence, actively using
+    invalid @3;        # Data inconsistent, using defaults
   }
 }
 

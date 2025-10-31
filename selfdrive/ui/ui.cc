@@ -74,39 +74,33 @@ static void update_state(UIState *s) {
     }
   }
 
-  // Update BMW diagnostic data whenever carState is available (if BMW detected)
-  if (scene.bmw_diagnostics_available && sm.updated("carState")) {
-    // Get real BMW temperature data from CarState during replay
-    auto cs = sm["carState"].getCarState();
-    scene.bmw_coolant_temp = cs.getEngineCoolantTemp();
-    scene.bmw_oil_temp = cs.getEngineOilTemp();
+  // Note: BMW diagnostic data (temperatures, DTC) available in uds-dtc branch
+  // This branch only implements personalized longitudinal learning
 
-    // Simulate additional BMW diagnostic data for demonstration
-    // In real implementation, these would come from UDS queries
-    scene.bmw_intake_air_temp = scene.bmw_coolant_temp - 15.0f + (rand() % 10 - 5);
-    scene.bmw_exhaust_gas_temp = scene.bmw_coolant_temp + 250.0f + (rand() % 50 - 25);
-    scene.bmw_fuel_rail_pressure = 4.0f + (rand() % 20) / 10.0f;  // 4.0-6.0 bar
-    scene.bmw_turbo_boost_pressure = 0.5f + (rand() % 15) / 10.0f;  // 0.5-2.0 bar
-    scene.bmw_engine_rpm = 800 + (rand() % 1000);  // 800-1800 RPM (idle range)
-    scene.bmw_engine_load = 10.0f + (rand() % 30);  // 10-40% load
-    scene.bmw_battery_voltage = 12.5f + (rand() % 15) / 10.0f;  // 12.5-14.0V
+  // Update personalized longitudinal learning data from liveDelay (BMW only)
+  if (scene.bmw_diagnostics_available && sm.updated("liveDelay")) {
+    auto ld = sm["liveDelay"].getLiveDelay();
 
-    // BMW DME manages protection mode - we just display it
-    scene.bmw_protection_mode = 0;  // Normal (BMW DME controlled)
-    scene.bmw_thermal_stress = 0.0f;  // BMW DME managed
+    // Check if personalized learning data is available
+    if (ld.hasPersonalizedScales()) {
+      auto scales = ld.getPersonalizedScales();
+      size_t num_scales = scales.size() < 5 ? scales.size() : 5;
+      for (size_t i = 0; i < num_scales; i++) {
+        scene.personalized_scales[i] = scales[i];
+      }
+    }
 
-    // Get real DTC data from BMW carstate via CarState messaging
-    scene.bmw_dtc_count = cs.getBmwDtcCount();
-    scene.bmw_dtc_active = (scene.bmw_dtc_count > 0);
+    if (ld.hasPersonalizedValidBlocks()) {
+      auto blocks = ld.getPersonalizedValidBlocks();
+      size_t num_blocks = blocks.size() < 5 ? blocks.size() : 5;
+      for (size_t i = 0; i < num_blocks; i++) {
+        scene.personalized_valid_blocks[i] = blocks[i];
+      }
+    }
 
-    // Copy DTC codes string (newline-separated)
-    auto dtc_text = cs.getBmwActiveDtcs();
-    strncpy(scene.bmw_active_dtcs, dtc_text.cStr(), sizeof(scene.bmw_active_dtcs) - 1);
-    scene.bmw_active_dtcs[sizeof(scene.bmw_active_dtcs) - 1] = '\0';
-    // Copy DTC clear status
-    auto clear_status_text = cs.getBmwDtcClearStatus();
-    strncpy(scene.bmw_dtc_clear_status, clear_status_text.cStr(), sizeof(scene.bmw_dtc_clear_status) - 1);
-    scene.bmw_dtc_clear_status[sizeof(scene.bmw_dtc_clear_status) - 1] = '\0';
+    scene.personalized_progress = ld.getPersonalizedProgress();
+    scene.personalized_status = static_cast<uint8_t>(ld.getPersonalizedStatus());
+    scene.personalized_active_interval = ld.getPersonalizedActiveInterval();
   }
 
   scene.recording_audio = Params().getBool("RecordAudio") && scene.started;
@@ -148,7 +142,7 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   sm = std::make_unique<SubMaster>(std::vector<const char*>{
     "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState",
     "pandaStates", "carParams", "driverMonitoringState", "carState", "driverStateV2",
-    "wideRoadCameraState", "managerState", "selfdriveState", "longitudinalPlan",
+    "wideRoadCameraState", "managerState", "selfdriveState", "longitudinalPlan", "liveDelay",
   });
   prime_state = new PrimeState(this);
   language = QString::fromStdString(Params().get("LanguageSetting"));

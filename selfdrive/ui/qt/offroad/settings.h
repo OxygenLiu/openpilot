@@ -109,6 +109,7 @@ public:
 
 private slots:
   void openBmwDiagnostics();
+  void openPersonalizedDetails();
   void updateState(const UIState &s);
 
 private:
@@ -118,6 +119,8 @@ private:
   LabelControl *coolant_temp_lbl;
   LabelControl *oil_temp_lbl;
   LabelControl *dtc_status_lbl;
+  LabelControl *personalized_learning_lbl;
+  ButtonControl *personalized_details_btn;
   void updateVehicleInfo();
 };
 

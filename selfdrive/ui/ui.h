@@ -81,6 +81,13 @@ typedef struct UIScene {
   bool bmw_dtc_active = false;
   char bmw_active_dtcs[256] = "";  // Comma-separated DTC codes
   char bmw_dtc_clear_status[128] = "";  // DTC clear eligibility status
+
+  // Personalized longitudinal learning data
+  float personalized_scales[5] = {1.0, 1.0, 1.0, 1.0, 1.0};  // Scale factors for VREL_BP intervals
+  uint16_t personalized_valid_blocks[5] = {0, 0, 0, 0, 0};   // Valid blocks per interval
+  uint8_t personalized_progress = 0;                          // Learning progress 0-100%
+  uint8_t personalized_status = 0;                            // 0=unlearned, 1=learning, 2=learned, 3=invalid
+  int8_t personalized_active_interval = -1;                   // Currently learning interval (-1 if none)
 } UIScene;
 
 class UIState : public QObject {
