@@ -960,22 +960,29 @@ void VehiclePanel::updateState(const UIState &s) {
   bool show_delay_details_btn = false;
 
   switch(s.scene.longitudinal_status) {
-    case 0:  // unestimated
-      delay_status_text = tr("Not estimated");
-      delay_status_color = "white";
+    case 0:  // unestimated / learning
+      delay_status_text = tr("Learning");
+      delay_status_color = "#999";  // Grey
       break;
-    case 1:  // estimated
-      delay_status_text = QString("Estimated: %1 s").arg(s.scene.longitudinal_delay_estimate, 0, 'f', 2);
-      delay_status_color = "#5CB85C";  // Green
+    case 1: {  // estimated
+      delay_status_text = QString("Learned: %1 s").arg(s.scene.longitudinal_delay_estimate, 0, 'f', 2);
+      // Check if learned delay is being used by controlsd (delay == estimate means activated)
+      float delay_diff = std::abs(s.scene.longitudinal_delay - s.scene.longitudinal_delay_estimate);
+      if (delay_diff < 0.01) {  // Activated (tolerance for floating point comparison)
+        delay_status_color = "#5CB85C";  // Green - learned and activated
+      } else {
+        delay_status_color = "#DAB825";  // Yellow - learned but not activated
+      }
       show_delay_details_btn = true;
       break;
+    }
     case 2:  // invalid
       delay_status_text = tr("Invalid data");
       delay_status_color = "#E22C2C";  // Red
       break;
     default:
       delay_status_text = tr("Unknown");
-      delay_status_color = "white";
+      delay_status_color = "#999";  // Grey
   }
 
   longitudinal_delay_lbl->setText(delay_status_text);
@@ -989,22 +996,29 @@ void VehiclePanel::updateState(const UIState &s) {
   bool show_lateral_delay_details_btn = false;
 
   switch(s.scene.lateral_status) {
-    case 0:  // unestimated
-      lateral_delay_status_text = tr("Not estimated");
-      lateral_delay_status_color = "white";
+    case 0:  // unestimated / learning
+      lateral_delay_status_text = tr("Learning");
+      lateral_delay_status_color = "#999";  // Grey
       break;
-    case 1:  // estimated
-      lateral_delay_status_text = QString("Estimated: %1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
-      lateral_delay_status_color = "#5CB85C";  // Green
+    case 1: {  // estimated
+      lateral_delay_status_text = QString("Learned: %1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
+      // Check if learned delay is being used by controlsd (delay == estimate means activated)
+      float lateral_delay_diff = std::abs(s.scene.lateral_delay - s.scene.lateral_delay_estimate);
+      if (lateral_delay_diff < 0.01) {  // Activated (tolerance for floating point comparison)
+        lateral_delay_status_color = "#5CB85C";  // Green - learned and activated
+      } else {
+        lateral_delay_status_color = "#DAB825";  // Yellow - learned but not activated
+      }
       show_lateral_delay_details_btn = true;
       break;
+    }
     case 2:  // invalid
       lateral_delay_status_text = tr("Invalid data");
       lateral_delay_status_color = "#E22C2C";  // Red
       break;
     default:
       lateral_delay_status_text = tr("Unknown");
-      lateral_delay_status_color = "white";
+      lateral_delay_status_color = "#999";  // Grey
   }
 
   lateral_delay_lbl->setText(lateral_delay_status_text);
