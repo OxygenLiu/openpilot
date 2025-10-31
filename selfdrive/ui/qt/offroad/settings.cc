@@ -968,7 +968,7 @@ void VehiclePanel::updateState(const UIState &s) {
       delay_status_text = QString("%1 s").arg(s.scene.longitudinal_delay_estimate, 0, 'f', 2);
       // Check if learned delay is being used by controlsd (delay == estimate means activated)
       float delay_diff = std::abs(s.scene.longitudinal_delay - s.scene.longitudinal_delay_estimate);
-      if (delay_diff < 0.01) {  // Activated (tolerance for floating point comparison)
+      if (delay_diff < 0.05) {  // Activated (50ms tolerance)
         delay_status_color = "#5CB85C";  // Green - learned and activated
       } else {
         delay_status_color = "#DAB825";  // Yellow - learned but not activated
@@ -1004,7 +1004,7 @@ void VehiclePanel::updateState(const UIState &s) {
       lateral_delay_status_text = QString("%1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
       // Check if learned delay is being used by controlsd (delay == estimate means activated)
       float lateral_delay_diff = std::abs(s.scene.lateral_delay - s.scene.lateral_delay_estimate);
-      if (lateral_delay_diff < 0.01) {  // Activated (tolerance for floating point comparison)
+      if (lateral_delay_diff < 0.05) {  // Activated (50ms tolerance)
         lateral_delay_status_color = "#5CB85C";  // Green - learned and activated
       } else {
         lateral_delay_status_color = "#DAB825";  // Yellow - learned but not activated
