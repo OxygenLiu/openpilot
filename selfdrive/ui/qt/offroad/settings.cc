@@ -570,6 +570,16 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   addItem(personalized_details_btn);
   personalized_details_btn->setVisible(false);  // Initially hidden
 
+  // Longitudinal actuator delay display
+  longitudinal_delay_lbl = new LabelControl(tr("Longitudinal Delay"), tr("Not estimated"));
+  addItem(longitudinal_delay_lbl);
+
+  // Details button for longitudinal delay (only shown when data is estimated)
+  longitudinal_delay_details_btn = new ButtonControl(tr("View Delay Details"), tr("View longitudinal actuator delay estimation"));
+  QObject::connect(longitudinal_delay_details_btn, &ButtonControl::clicked, this, &VehiclePanel::openLongitudinalDelayDetails);
+  addItem(longitudinal_delay_details_btn);
+  longitudinal_delay_details_btn->setVisible(false);  // Initially hidden
+
   // Set up UI state updates to show/hide BMW-specific controls
   QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
   
@@ -670,6 +680,117 @@ void VehiclePanel::openPersonalizedDetails() {
   delete dialog;
 }
 
+void VehiclePanel::openLongitudinalDelayDetails() {
+  const UIState &s = *uiState();
+
+  // Create dialog
+  QDialog *dialog = new QDialog(this);
+  dialog->setWindowTitle(tr("Longitudinal Actuator Delay"));
+  dialog->setStyleSheet("QDialog { background-color: #292929; }");
+
+  QVBoxLayout *main_layout = new QVBoxLayout(dialog);
+  main_layout->setContentsMargins(50, 50, 50, 50);
+  main_layout->setSpacing(30);
+
+  // Title
+  QLabel *title = new QLabel(tr("Longitudinal Actuator Delay Estimation"), dialog);
+  title->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  title->setAlignment(Qt::AlignCenter);
+  main_layout->addWidget(title);
+
+  // Status indicator
+  QString status_text;
+  QString status_color;
+  if (s.scene.longitudinal_status == 1) {  // Estimated
+    status_text = tr("ESTIMATED");
+    status_color = "#5CB85C";  // Green
+  } else if (s.scene.longitudinal_status == 2) {  // Invalid
+    status_text = tr("INVALID");
+    status_color = "#D9534F";  // Red
+  } else {  // Unestimated
+    status_text = tr("NOT ESTIMATED");
+    status_color = "#999";  // Gray
+  }
+
+  QLabel *status_lbl = new QLabel(status_text, dialog);
+  status_lbl->setStyleSheet(QString("QLabel { font-size: 36px; font-weight: bold; color: %1; }").arg(status_color));
+  status_lbl->setAlignment(Qt::AlignCenter);
+  main_layout->addWidget(status_lbl);
+
+  // Estimated delay value
+  QFrame *delay_frame = new QFrame(dialog);
+  delay_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *delay_layout = new QVBoxLayout(delay_frame);
+
+  QLabel *delay_label = new QLabel(tr("Estimated Delay"), dialog);
+  delay_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  delay_label->setAlignment(Qt::AlignCenter);
+  delay_layout->addWidget(delay_label);
+
+  QString delay_text = QString("%1 ms").arg(s.scene.longitudinal_delay_estimate * 1000.0, 0, 'f', 1);
+  QLabel *delay_value = new QLabel(delay_text, dialog);
+  delay_value->setStyleSheet("QLabel { font-size: 56px; font-weight: bold; color: white; }");
+  delay_value->setAlignment(Qt::AlignCenter);
+  delay_layout->addWidget(delay_value);
+
+  main_layout->addWidget(delay_frame);
+
+  // Standard deviation
+  QFrame *std_frame = new QFrame(dialog);
+  std_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *std_layout = new QVBoxLayout(std_frame);
+
+  QLabel *std_label = new QLabel(tr("Standard Deviation"), dialog);
+  std_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  std_label->setAlignment(Qt::AlignCenter);
+  std_layout->addWidget(std_label);
+
+  QString std_text = QString("± %1 ms").arg(s.scene.longitudinal_delay_std * 1000.0, 0, 'f', 1);
+  QLabel *std_value = new QLabel(std_text, dialog);
+  std_value->setStyleSheet("QLabel { font-size: 42px; font-weight: bold; color: white; }");
+  std_value->setAlignment(Qt::AlignCenter);
+  std_layout->addWidget(std_value);
+
+  main_layout->addWidget(std_frame);
+
+  // Calibration progress
+  QFrame *cal_frame = new QFrame(dialog);
+  cal_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QHBoxLayout *cal_layout = new QHBoxLayout(cal_frame);
+
+  QLabel *cal_label = new QLabel(tr("Calibration:"), dialog);
+  cal_label->setStyleSheet("QLabel { font-size: 32px; color: #999; }");
+  cal_layout->addWidget(cal_label);
+
+  QString cal_text = QString("%1% (%2/%3 blocks)")
+                        .arg(s.scene.longitudinal_cal_perc)
+                        .arg(s.scene.longitudinal_valid_blocks)
+                        .arg(10);  // BLOCK_NUM_NEEDED from lagd.py
+  QLabel *cal_value = new QLabel(cal_text, dialog);
+  cal_value->setStyleSheet("QLabel { font-size: 32px; font-weight: bold; color: white; }");
+  cal_layout->addWidget(cal_value);
+  cal_layout->addStretch();
+
+  main_layout->addWidget(cal_frame);
+
+  // Explanation text
+  QLabel *explanation = new QLabel(tr("Longitudinal actuator delay is the time between commanded acceleration and actual vehicle response"), dialog);
+  explanation->setStyleSheet("QLabel { font-size: 24px; color: #999; }");
+  explanation->setAlignment(Qt::AlignCenter);
+  explanation->setWordWrap(true);
+  main_layout->addWidget(explanation);
+
+  // Close button
+  QPushButton *close_btn = new QPushButton(tr("Close"), dialog);
+  close_btn->setStyleSheet("QPushButton { font-size: 36px; padding: 20px; background-color: #5CB85C; color: white; border-radius: 10px; }");
+  QObject::connect(close_btn, &QPushButton::clicked, dialog, &QDialog::accept);
+  main_layout->addWidget(close_btn);
+
+  dialog->setMinimumSize(1000, 800);
+  dialog->exec();
+  delete dialog;
+}
+
 void VehiclePanel::updateState(const UIState &s) {
   // Update vehicle info title
   if (strlen(s.scene.bmw_car_fingerprint) > 0) {
@@ -711,6 +832,35 @@ void VehiclePanel::updateState(const UIState &s) {
   personalized_learning_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(status_color));
   personalized_learning_lbl->setVisible(true);  // Always visible
   personalized_details_btn->setVisible(show_details_btn);
+
+  // Longitudinal actuator delay display (always visible)
+  QString delay_status_text;
+  QString delay_status_color;
+  bool show_delay_details_btn = false;
+
+  switch(s.scene.longitudinal_status) {
+    case 0:  // unestimated
+      delay_status_text = tr("Not estimated");
+      delay_status_color = "white";
+      break;
+    case 1:  // estimated
+      delay_status_text = QString("Estimated: %1 ms").arg(s.scene.longitudinal_delay_estimate * 1000.0, 0, 'f', 1);
+      delay_status_color = "#5CB85C";  // Green
+      show_delay_details_btn = true;
+      break;
+    case 2:  // invalid
+      delay_status_text = tr("Invalid data");
+      delay_status_color = "#E22C2C";  // Red
+      break;
+    default:
+      delay_status_text = tr("Unknown");
+      delay_status_color = "white";
+  }
+
+  longitudinal_delay_lbl->setText(delay_status_text);
+  longitudinal_delay_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(delay_status_color));
+  longitudinal_delay_lbl->setVisible(true);  // Always visible
+  longitudinal_delay_details_btn->setVisible(show_delay_details_btn);
 
   // BMW-specific displays (only when BMW detected)
   if (s.scene.bmw_diagnostics_available) {

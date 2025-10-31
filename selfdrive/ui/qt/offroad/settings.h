@@ -110,6 +110,7 @@ public:
 private slots:
   void openBmwDiagnostics();
   void openPersonalizedDetails();
+  void openLongitudinalDelayDetails();
   void updateState(const UIState &s);
 
 private:
@@ -121,6 +122,8 @@ private:
   LabelControl *dtc_status_lbl;
   LabelControl *personalized_learning_lbl;
   ButtonControl *personalized_details_btn;
+  LabelControl *longitudinal_delay_lbl;
+  ButtonControl *longitudinal_delay_details_btn;
   void updateVehicleInfo();
 };
 

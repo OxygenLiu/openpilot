@@ -88,6 +88,14 @@ typedef struct UIScene {
   uint8_t personalized_progress = 0;                          // Learning progress 0-100%
   uint8_t personalized_status = 0;                            // 0=unlearned, 1=learning, 2=learned, 3=invalid
   int8_t personalized_active_interval = -1;                   // Currently learning interval (-1 if none)
+
+  // Longitudinal actuator delay learning data
+  float longitudinal_delay = 0.0;                             // Current longitudinal delay (seconds)
+  float longitudinal_delay_estimate = 0.0;                    // Estimated delay
+  float longitudinal_delay_std = 0.0;                         // Standard deviation
+  int longitudinal_valid_blocks = 0;                          // Valid blocks count
+  uint8_t longitudinal_status = 0;                            // 0=unestimated, 1=estimated, 2=invalid
+  int8_t longitudinal_cal_perc = 0;                           // Calibration percentage
 } UIScene;
 
 class UIState : public QObject {

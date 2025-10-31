@@ -101,6 +101,14 @@ static void update_state(UIState *s) {
     scene.personalized_progress = ld.getPersonalizedProgress();
     scene.personalized_status = static_cast<uint8_t>(ld.getPersonalizedStatus());
     scene.personalized_active_interval = ld.getPersonalizedActiveInterval();
+
+    // Populate longitudinal actuator delay data
+    scene.longitudinal_delay = ld.getLongitudinalDelay();
+    scene.longitudinal_delay_estimate = ld.getLongitudinalDelayEstimate();
+    scene.longitudinal_delay_std = ld.getLongitudinalDelayEstimateStd();
+    scene.longitudinal_valid_blocks = ld.getLongitudinalValidBlocks();
+    scene.longitudinal_status = static_cast<uint8_t>(ld.getLongitudinalStatus());
+    scene.longitudinal_cal_perc = ld.getLongitudinalCalPerc();
   }
 
   scene.recording_audio = Params().getBool("RecordAudio") && scene.started;
