@@ -73,54 +73,33 @@ def get_jerk_factor(personality=log.LongitudinalPersonality.standard):
     raise NotImplementedError("Longitudinal personality not supported")
 
 
-def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, CP=None, v_ego=None):
+def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, scale=1.0):
   """
   Get time-based following distance for personality mode.
 
-  Supports speed-dependent T_FOLLOW via scale factors for cars with DCC limitations.
-  Base personality values (1.75/1.45/1.25) are scaled based on speed to compensate
-  for limited braking capability and vision detection range at high speeds.
+  Supports velocity-difference-based T_FOLLOW scaling via scale factor.
+  Base personality values (1.75/1.45/1.25) are multiplied by scale.
 
   Args:
     personality: LongitudinalPersonality mode (relaxed/standard/aggressive)
-    CP: CarParams with optional longitudinalPersonalityParams.useCustomLookup
-    v_ego: Current vehicle speed (m/s), used for speed-dependent scaling
+    scale: T_FOLLOW scale factor based on velocity difference (v_ego - v_lead) (default 1.0)
+           For BMW: Calculated from VREL_BP and T_FOLLOW_SCALE_FACTORS lookup tables
 
   Returns:
-    T_FOLLOW value (seconds)
+    T_FOLLOW value (seconds) = base_t_follow * scale
   """
   # Get base personality value (standard openpilot defaults)
   if personality == log.LongitudinalPersonality.relaxed:
-    base_t_follow = 1.75
+    t_follow = 1.75
   elif personality == log.LongitudinalPersonality.standard:
-    base_t_follow = 1.45
+    t_follow = 1.45
   elif personality == log.LongitudinalPersonality.aggressive:
-    base_t_follow = 1.25
+    t_follow = 1.25
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
-  # Check if car uses custom speed-dependent scale factors (e.g., BMW DCC)
-  if (CP is not None and
-      hasattr(CP, 'longitudinalPersonalityParams') and
-      CP.longitudinalPersonalityParams.useCustomLookup and
-      v_ego is not None):
-
-    # Import car-specific lookup tables dynamically based on brand
-    try:
-      # Import LongitudinalPersonalityParams from car's brand package
-      brand_module = __import__(f'opendbc.car.{CP.brand}.values', fromlist=['LongitudinalPersonalityParams'])
-      LongitudinalPersonalityParams = brand_module.LongitudinalPersonalityParams
-
-      # Apply speed-dependent scale factor to base personality
-      speed_scale = float(np.interp(v_ego,
-                                   LongitudinalPersonalityParams.SPEED_SCALE_BP,
-                                   LongitudinalPersonalityParams.SPEED_SCALE_VALUES))
-      return base_t_follow * speed_scale
-    except (ImportError, AttributeError):
-      # Fallback if custom lookup not available
-      pass
-
-  return base_t_follow
+  # Apply scale factor (defaults to 1.0 for no scaling)
+  return t_follow * scale
 
 def get_stopped_equivalence_factor(v_lead):
   """
@@ -285,10 +264,9 @@ def gen_long_ocp():
 
 
 class LongitudinalMpc:
-  def __init__(self, mode='acc', dt=DT_MDL, CP=None):
+  def __init__(self, mode='acc', dt=DT_MDL):
     self.mode = mode
     self.dt = dt
-    self.CP = CP  # Store CarParams for car-specific personality overrides
     self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.reset()
     self.source = SOURCES[2]
@@ -391,8 +369,8 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, v_cruise, x, v, a, j, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality, self.CP)
+  def update(self, radarstate, v_cruise, x, v, a, j, personality=log.LongitudinalPersonality.standard, scale=1.0):
+    t_follow = get_T_FOLLOW(personality, scale)
     v_ego = self.x0[1]
     self.status = radarstate.leadOne.status or radarstate.leadTwo.status
 
