@@ -2319,6 +2319,15 @@ struct LiveDelayData {
   personalizedStatus @21 :PersonalizedStatus;   # Learning status
   personalizedActiveInterval @22 :Int8;         # Currently learning interval (-1 if none)
 
+  # Personalized curve speed control learning
+  curveSpeedLookaheadTime @23 :Float32;         # Learned lookahead time (seconds)
+  curveSpeedLatAccelLimit @24 :Float32;         # Learned lateral acceleration limit (m/s²)
+  curveSpeedSpeedMargin @25 :Float32;           # Learned speed margin (0.0-1.0)
+  curveSpeedMinCurvatureThreshold @26 :Float32; # Learned min curvature threshold
+  curveSpeedValidSegments @27 :UInt16;          # Number of valid curve segments collected
+  curveSpeedProgress @28 :UInt8;                # Learning progress 0-100%
+  curveSpeedStatus @29 :PersonalizedStatus;     # Learning status
+
   enum Status {
     unestimated @0;
     estimated @1;
