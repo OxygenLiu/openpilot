@@ -117,6 +117,15 @@ static void update_state(UIState *s) {
     scene.lateral_valid_blocks = ld.getValidBlocks();
     scene.lateral_status = static_cast<uint8_t>(ld.getStatus());
     scene.lateral_cal_perc = ld.getCalPerc();
+
+    // Populate curve speed control learning data
+    scene.curve_speed_lookahead_time = ld.getCurveSpeedLookaheadTime();
+    scene.curve_speed_lat_accel_limit = ld.getCurveSpeedLatAccelLimit();
+    scene.curve_speed_speed_margin = ld.getCurveSpeedSpeedMargin();
+    scene.curve_speed_min_curvature = ld.getCurveSpeedMinCurvatureThreshold();
+    scene.curve_speed_valid_segments = ld.getCurveSpeedValidSegments();
+    scene.curve_speed_progress = ld.getCurveSpeedProgress();
+    scene.curve_speed_status = static_cast<uint8_t>(ld.getCurveSpeedStatus());
   }
 
   scene.recording_audio = Params().getBool("RecordAudio") && scene.started;

@@ -104,6 +104,15 @@ typedef struct UIScene {
   int lateral_valid_blocks = 0;                               // Valid blocks count
   uint8_t lateral_status = 0;                                 // 0=unestimated, 1=estimated, 2=invalid
   int8_t lateral_cal_perc = 0;                                // Calibration percentage
+
+  // Curve speed control learning data
+  float curve_speed_lookahead_time = 3.0;                     // Learned lookahead time (seconds)
+  float curve_speed_lat_accel_limit = 2.0;                    // Learned lateral accel limit (m/s²)
+  float curve_speed_speed_margin = 0.85;                      // Learned speed margin (0.0-1.0)
+  float curve_speed_min_curvature = 0.003;                    // Learned min curvature threshold
+  uint16_t curve_speed_valid_segments = 0;                    // Valid curve segments collected
+  uint8_t curve_speed_progress = 0;                           // Learning progress 0-100%
+  uint8_t curve_speed_status = 0;                             // 0=unlearned, 1=learning, 2=learned, 3=invalid
 } UIScene;
 
 class UIState : public QObject {

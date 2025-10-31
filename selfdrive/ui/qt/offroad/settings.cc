@@ -590,6 +590,16 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   addItem(lateral_delay_details_btn);
   lateral_delay_details_btn->setVisible(false);  // Initially hidden
 
+  // Curve speed control learning display
+  curve_speed_lbl = new LabelControl(tr("Curve Speed Control"), tr("Not learning"));
+  addItem(curve_speed_lbl);
+
+  // Details button for curve speed (only shown when data is learning or learned)
+  curve_speed_details_btn = new ButtonControl(tr("View Parameters"), tr("View learned curve speed parameters"));
+  QObject::connect(curve_speed_details_btn, &ButtonControl::clicked, this, &VehiclePanel::openCurveSpeedDetails);
+  addItem(curve_speed_details_btn);
+  curve_speed_details_btn->setVisible(false);  // Initially hidden
+
   // Set up UI state updates to show/hide BMW-specific controls
   QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
   
@@ -912,6 +922,155 @@ void VehiclePanel::openLateralDelayDetails() {
   delete dialog;
 }
 
+void VehiclePanel::openCurveSpeedDetails() {
+  const UIState &s = *uiState();
+
+  // Create dialog
+  QDialog *dialog = new QDialog(this);
+  dialog->setWindowTitle(tr("Curve Speed Control"));
+  dialog->setStyleSheet("QDialog { background-color: #292929; }");
+
+  QVBoxLayout *main_layout = new QVBoxLayout(dialog);
+  main_layout->setContentsMargins(50, 50, 50, 50);
+  main_layout->setSpacing(30);
+
+  // Title
+  QLabel *title = new QLabel(tr("Learned Curve Speed Parameters"), dialog);
+  title->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  title->setAlignment(Qt::AlignCenter);
+  main_layout->addWidget(title);
+
+  // Status indicator
+  QString status_text;
+  QString status_color;
+  if (s.scene.curve_speed_status == 2) {  // Learned
+    status_text = tr("LEARNED");
+    status_color = "#5CB85C";  // Green
+  } else if (s.scene.curve_speed_status == 1) {  // Learning
+    status_text = tr("LEARNING");
+    status_color = "#DAB825";  // Yellow
+  } else if (s.scene.curve_speed_status == 3) {  // Invalid
+    status_text = tr("INVALID");
+    status_color = "#D9534F";  // Red
+  } else {  // Unlearned
+    status_text = tr("NOT LEARNED");
+    status_color = "#999";  // Gray
+  }
+
+  QLabel *status_lbl = new QLabel(status_text, dialog);
+  status_lbl->setStyleSheet(QString("QLabel { font-size: 36px; font-weight: bold; color: %1; }").arg(status_color));
+  status_lbl->setAlignment(Qt::AlignCenter);
+  main_layout->addWidget(status_lbl);
+
+  // Lookahead time parameter
+  QFrame *lookahead_frame = new QFrame(dialog);
+  lookahead_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *lookahead_layout = new QVBoxLayout(lookahead_frame);
+
+  QLabel *lookahead_label = new QLabel(tr("Lookahead Time"), dialog);
+  lookahead_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  lookahead_label->setAlignment(Qt::AlignCenter);
+  lookahead_layout->addWidget(lookahead_label);
+
+  QString lookahead_text = QString("%1 s").arg(s.scene.curve_speed_lookahead_time, 0, 'f', 1);
+  QLabel *lookahead_value = new QLabel(lookahead_text, dialog);
+  lookahead_value->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  lookahead_value->setAlignment(Qt::AlignCenter);
+  lookahead_layout->addWidget(lookahead_value);
+
+  main_layout->addWidget(lookahead_frame);
+
+  // Lateral acceleration limit parameter
+  QFrame *lat_accel_frame = new QFrame(dialog);
+  lat_accel_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *lat_accel_layout = new QVBoxLayout(lat_accel_frame);
+
+  QLabel *lat_accel_label = new QLabel(tr("Lateral Accel Limit"), dialog);
+  lat_accel_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  lat_accel_label->setAlignment(Qt::AlignCenter);
+  lat_accel_layout->addWidget(lat_accel_label);
+
+  QString lat_accel_text = QString("%1 m/s²").arg(s.scene.curve_speed_lat_accel_limit, 0, 'f', 2);
+  QLabel *lat_accel_value = new QLabel(lat_accel_text, dialog);
+  lat_accel_value->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  lat_accel_value->setAlignment(Qt::AlignCenter);
+  lat_accel_layout->addWidget(lat_accel_value);
+
+  main_layout->addWidget(lat_accel_frame);
+
+  // Speed margin parameter
+  QFrame *margin_frame = new QFrame(dialog);
+  margin_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *margin_layout = new QVBoxLayout(margin_frame);
+
+  QLabel *margin_label = new QLabel(tr("Speed Margin"), dialog);
+  margin_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  margin_label->setAlignment(Qt::AlignCenter);
+  margin_layout->addWidget(margin_label);
+
+  QString margin_text = QString("%1%").arg(s.scene.curve_speed_speed_margin * 100.0, 0, 'f', 0);
+  QLabel *margin_value = new QLabel(margin_text, dialog);
+  margin_value->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  margin_value->setAlignment(Qt::AlignCenter);
+  margin_layout->addWidget(margin_value);
+
+  main_layout->addWidget(margin_frame);
+
+  // Minimum curvature threshold parameter
+  QFrame *curvature_frame = new QFrame(dialog);
+  curvature_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QVBoxLayout *curvature_layout = new QVBoxLayout(curvature_frame);
+
+  QLabel *curvature_label = new QLabel(tr("Min Curvature Threshold"), dialog);
+  curvature_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
+  curvature_label->setAlignment(Qt::AlignCenter);
+  curvature_layout->addWidget(curvature_label);
+
+  QString curvature_text = QString("%1 rad/m").arg(s.scene.curve_speed_min_curvature, 0, 'f', 4);
+  QLabel *curvature_value = new QLabel(curvature_text, dialog);
+  curvature_value->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
+  curvature_value->setAlignment(Qt::AlignCenter);
+  curvature_layout->addWidget(curvature_value);
+
+  main_layout->addWidget(curvature_frame);
+
+  // Learning progress
+  QFrame *progress_frame = new QFrame(dialog);
+  progress_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
+  QHBoxLayout *progress_layout = new QHBoxLayout(progress_frame);
+
+  QLabel *progress_label = new QLabel(tr("Learning Progress:"), dialog);
+  progress_label->setStyleSheet("QLabel { font-size: 32px; color: #999; }");
+  progress_layout->addWidget(progress_label);
+
+  QString progress_text = QString("%1% (%2/50 segments)")
+                            .arg(s.scene.curve_speed_progress)
+                            .arg(s.scene.curve_speed_valid_segments);
+  QLabel *progress_value = new QLabel(progress_text, dialog);
+  progress_value->setStyleSheet("QLabel { font-size: 32px; font-weight: bold; color: white; }");
+  progress_layout->addWidget(progress_value);
+  progress_layout->addStretch();
+
+  main_layout->addWidget(progress_frame);
+
+  // Explanation text
+  QLabel *explanation = new QLabel(tr("Curve speed parameters are learned from your manual driving through curves (≥10s segments)"), dialog);
+  explanation->setStyleSheet("QLabel { font-size: 24px; color: #999; }");
+  explanation->setAlignment(Qt::AlignCenter);
+  explanation->setWordWrap(true);
+  main_layout->addWidget(explanation);
+
+  // Close button
+  QPushButton *close_btn = new QPushButton(tr("Close"), dialog);
+  close_btn->setStyleSheet("QPushButton { font-size: 36px; padding: 20px; background-color: #5CB85C; color: white; border-radius: 10px; }");
+  QObject::connect(close_btn, &QPushButton::clicked, dialog, &QDialog::accept);
+  main_layout->addWidget(close_btn);
+
+  dialog->setMinimumSize(1000, 1000);
+  dialog->exec();
+  delete dialog;
+}
+
 void VehiclePanel::updateState(const UIState &s) {
   // Update vehicle info title
   if (strlen(s.scene.bmw_car_fingerprint) > 0) {
@@ -1025,6 +1184,40 @@ void VehiclePanel::updateState(const UIState &s) {
   lateral_delay_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(lateral_delay_status_color));
   lateral_delay_lbl->setVisible(true);  // Always visible
   lateral_delay_details_btn->setVisible(show_lateral_delay_details_btn);
+
+  // Curve speed control learning display (always visible)
+  QString curve_status_text;
+  QString curve_status_color;
+  bool show_curve_details_btn = false;
+
+  switch(s.scene.curve_speed_status) {
+    case 0:  // unlearned
+      curve_status_text = tr("Not learning");
+      curve_status_color = "#999";  // Grey
+      break;
+    case 1:  // learning
+      curve_status_text = QString("Learning: %1%").arg(s.scene.curve_speed_progress);
+      curve_status_color = "#DAB825";  // Yellow
+      show_curve_details_btn = true;
+      break;
+    case 2:  // learned
+      curve_status_text = QString("Learned (%1 segments)").arg(s.scene.curve_speed_valid_segments);
+      curve_status_color = "#5CB85C";  // Green
+      show_curve_details_btn = true;
+      break;
+    case 3:  // invalid
+      curve_status_text = tr("Invalid data");
+      curve_status_color = "#E22C2C";  // Red
+      break;
+    default:
+      curve_status_text = tr("Unknown");
+      curve_status_color = "#999";  // Grey
+  }
+
+  curve_speed_lbl->setText(curve_status_text);
+  curve_speed_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(curve_status_color));
+  curve_speed_lbl->setVisible(true);  // Always visible
+  curve_speed_details_btn->setVisible(show_curve_details_btn);
 
   // BMW-specific displays (only when BMW detected)
   if (s.scene.bmw_diagnostics_available) {

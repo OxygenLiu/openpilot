@@ -112,6 +112,7 @@ private slots:
   void openPersonalizedDetails();
   void openLongitudinalDelayDetails();
   void openLateralDelayDetails();
+  void openCurveSpeedDetails();
   void updateState(const UIState &s);
 
 private:
@@ -127,6 +128,8 @@ private:
   ButtonControl *longitudinal_delay_details_btn;
   LabelControl *lateral_delay_lbl;
   ButtonControl *lateral_delay_details_btn;
+  LabelControl *curve_speed_lbl;
+  ButtonControl *curve_speed_details_btn;
   void updateVehicleInfo();
 };
 
