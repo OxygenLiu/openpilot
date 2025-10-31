@@ -109,6 +109,14 @@ static void update_state(UIState *s) {
     scene.longitudinal_valid_blocks = ld.getLongitudinalValidBlocks();
     scene.longitudinal_status = static_cast<uint8_t>(ld.getLongitudinalStatus());
     scene.longitudinal_cal_perc = ld.getLongitudinalCalPerc();
+
+    // Populate lateral actuator delay data
+    scene.lateral_delay = ld.getLateralDelay();
+    scene.lateral_delay_estimate = ld.getLateralDelayEstimate();
+    scene.lateral_delay_std = ld.getLateralDelayEstimateStd();
+    scene.lateral_valid_blocks = ld.getValidBlocks();
+    scene.lateral_status = static_cast<uint8_t>(ld.getStatus());
+    scene.lateral_cal_perc = ld.getCalPerc();
   }
 
   scene.recording_audio = Params().getBool("RecordAudio") && scene.started;

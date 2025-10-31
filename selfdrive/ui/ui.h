@@ -96,6 +96,14 @@ typedef struct UIScene {
   int longitudinal_valid_blocks = 0;                          // Valid blocks count
   uint8_t longitudinal_status = 0;                            // 0=unestimated, 1=estimated, 2=invalid
   int8_t longitudinal_cal_perc = 0;                           // Calibration percentage
+
+  // Lateral actuator delay learning data
+  float lateral_delay = 0.0;                                  // Current lateral delay (seconds)
+  float lateral_delay_estimate = 0.0;                         // Estimated delay
+  float lateral_delay_std = 0.0;                              // Standard deviation
+  int lateral_valid_blocks = 0;                               // Valid blocks count
+  uint8_t lateral_status = 0;                                 // 0=unestimated, 1=estimated, 2=invalid
+  int8_t lateral_cal_perc = 0;                                // Calibration percentage
 } UIScene;
 
 class UIState : public QObject {
