@@ -737,7 +737,7 @@ void VehiclePanel::openLongitudinalDelayDetails() {
   delay_label->setAlignment(Qt::AlignCenter);
   delay_layout->addWidget(delay_label);
 
-  QString delay_text = QString("%1 ms").arg(s.scene.longitudinal_delay_estimate * 1000.0, 0, 'f', 1);
+  QString delay_text = QString("%1 s").arg(s.scene.longitudinal_delay_estimate, 0, 'f', 2);
   QLabel *delay_value = new QLabel(delay_text, dialog);
   delay_value->setStyleSheet("QLabel { font-size: 56px; font-weight: bold; color: white; }");
   delay_value->setAlignment(Qt::AlignCenter);
@@ -755,7 +755,7 @@ void VehiclePanel::openLongitudinalDelayDetails() {
   std_label->setAlignment(Qt::AlignCenter);
   std_layout->addWidget(std_label);
 
-  QString std_text = QString("± %1 ms").arg(s.scene.longitudinal_delay_std * 1000.0, 0, 'f', 1);
+  QString std_text = QString("± %1 s").arg(s.scene.longitudinal_delay_std, 0, 'f', 2);
   QLabel *std_value = new QLabel(std_text, dialog);
   std_value->setStyleSheet("QLabel { font-size: 42px; font-weight: bold; color: white; }");
   std_value->setAlignment(Qt::AlignCenter);
@@ -848,7 +848,7 @@ void VehiclePanel::openLateralDelayDetails() {
   delay_label->setAlignment(Qt::AlignCenter);
   delay_layout->addWidget(delay_label);
 
-  QString delay_text = QString("%1 ms").arg(s.scene.lateral_delay_estimate * 1000.0, 0, 'f', 1);
+  QString delay_text = QString("%1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
   QLabel *delay_value = new QLabel(delay_text, dialog);
   delay_value->setStyleSheet("QLabel { font-size: 56px; font-weight: bold; color: white; }");
   delay_value->setAlignment(Qt::AlignCenter);
@@ -866,7 +866,7 @@ void VehiclePanel::openLateralDelayDetails() {
   std_label->setAlignment(Qt::AlignCenter);
   std_layout->addWidget(std_label);
 
-  QString std_text = QString("± %1 ms").arg(s.scene.lateral_delay_std * 1000.0, 0, 'f', 1);
+  QString std_text = QString("± %1 s").arg(s.scene.lateral_delay_std, 0, 'f', 2);
   QLabel *std_value = new QLabel(std_text, dialog);
   std_value->setStyleSheet("QLabel { font-size: 42px; font-weight: bold; color: white; }");
   std_value->setAlignment(Qt::AlignCenter);
@@ -965,7 +965,7 @@ void VehiclePanel::updateState(const UIState &s) {
       delay_status_color = "white";
       break;
     case 1:  // estimated
-      delay_status_text = QString("Estimated: %1 ms").arg(s.scene.longitudinal_delay_estimate * 1000.0, 0, 'f', 1);
+      delay_status_text = QString("Estimated: %1 s").arg(s.scene.longitudinal_delay_estimate, 0, 'f', 2);
       delay_status_color = "#5CB85C";  // Green
       show_delay_details_btn = true;
       break;
@@ -994,7 +994,7 @@ void VehiclePanel::updateState(const UIState &s) {
       lateral_delay_status_color = "white";
       break;
     case 1:  // estimated
-      lateral_delay_status_text = QString("Estimated: %1 ms").arg(s.scene.lateral_delay_estimate * 1000.0, 0, 'f', 1);
+      lateral_delay_status_text = QString("Estimated: %1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
       lateral_delay_status_color = "#5CB85C";  // Green
       show_lateral_delay_details_btn = true;
       break;
