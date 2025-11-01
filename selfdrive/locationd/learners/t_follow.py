@@ -13,13 +13,18 @@ Methodology:
 Data criteria:
 - Cruise/openpilot NOT engaged (manual driving)
 - Lead vehicle detected by vision
-- Approaching slower lead (vrel > 0)
-- Driver decelerating (-1.2 to 0.0 m/s²)
+- POSITIVE VREL (approaching slower lead):
+  - Driver decelerating (-1.2 to 0.0 m/s²)
+  - No gas input (pure braking/coasting)
+- NEGATIVE VREL (catching up to faster lead):
+  - Driver accelerating (0.0 to 0.8 m/s²)
+  - Steady-state acceleration (not pedal transients)
 - Continuous for 5+ seconds
 - At least 10 valid blocks per interval
 """
 
 import numpy as np
+from collections import deque
 from cereal import car, log
 from openpilot.common.swaglog import cloudlog
 from selfdrive.locationd.learners.base import LearnerClass, BlockAverage, Points
@@ -35,17 +40,27 @@ class PersonalizedLongitudinalLearner(LearnerClass):
     BLOCK_NUM = 50            # 50 blocks total history per interval
     BLOCK_NUM_NEEDED = 10     # 10 valid blocks needed (50 seconds = 10 * 5s)
 
-    # VREL_BP intervals (matching BMW values.py)
-    VREL_BP_KPH = [0, 10, 20, 30, 40]  # kph
+    # VREL_BP intervals - EXTENDED to include negative vrel (catching up)
+    # Symmetric coverage: catching up to faster lead + approaching slower lead
+    VREL_BP_KPH = [-40, -30, -20, -10, 0, 10, 20, 30, 40]  # kph
     VREL_BP = [v / 3.6 for v in VREL_BP_KPH]  # m/s
-    NUM_INTERVALS = len(VREL_BP)
+    NUM_INTERVALS = len(VREL_BP)  # 9 intervals (was 5)
 
     # Quality filtering thresholds
     MIN_VEGO = 10.0           # m/s (36 kph) - minimum speed for valid data
     MAX_VEGO = 40.0           # m/s (144 kph) - maximum speed
+
+    # DECELERATION thresholds (positive vrel - approaching slower lead)
     MIN_DECEL = -1.2          # m/s² - BMW DCC minus5 hold
     MAX_DECEL = 0.0           # m/s² - no acceleration
-    MIN_VREL = 0.1            # m/s - approaching lead (v_ego > v_lead)
+
+    # ACCELERATION thresholds (negative vrel - catching up to faster lead)
+    MIN_ACCEL = 0.0           # m/s² - no deceleration
+    MAX_ACCEL = 0.8           # m/s² - moderate acceleration
+    ACCEL_STD_THRESHOLD = 0.2 # m/s² - steady acceleration variance threshold
+    ACCEL_HISTORY_LEN = 60    # samples (3 seconds at 20Hz)
+
+    MIN_VREL = 0.1            # m/s - minimum |vrel| for valid data
     MIN_SEGMENT_DURATION = 5.0  # seconds - minimum continuous valid segment
     MAX_LEAD_DISTANCE = 200.0   # m - BMW vision ModelV2 detection range (highway conditions)
 
@@ -55,7 +70,7 @@ class PersonalizedLongitudinalLearner(LearnerClass):
     def __init__(self, CP: car.CarParams, dt: float = 0.05):
         super().__init__(CP, dt)
 
-        # Initialize BlockAverage for each VREL_BP interval
+        # Initialize BlockAverage for each VREL_BP interval (9 intervals now)
         self.block_averages = [
             BlockAverage(self.BLOCK_NUM, self.BLOCK_SIZE, 0, 1.0)
             for _ in range(self.NUM_INTERVALS)
@@ -75,6 +90,9 @@ class PersonalizedLongitudinalLearner(LearnerClass):
         self.cruise_enabled = False
         self.long_active = False
         self.lead_status = False
+
+        # Acceleration history for steady-state detection (negative vrel)
+        self.accel_history = deque(maxlen=self.ACCEL_HISTORY_LEN)
 
         # Segment tracking for 5-second continuity requirement
         self.segment_start_time = None
@@ -104,6 +122,8 @@ class PersonalizedLongitudinalLearner(LearnerClass):
         """
         Map vrel to VREL_BP interval index
 
+        Supports both positive (approaching) and negative (catching up) vrel.
+
         Uses numpy searchsorted for consistent interval mapping:
         - vrel < VREL_BP[0] → interval 0
         - VREL_BP[i] <= vrel < VREL_BP[i+1] → interval i
@@ -115,28 +135,74 @@ class PersonalizedLongitudinalLearner(LearnerClass):
         # Clamp to valid interval range [0, NUM_INTERVALS-1]
         return min(max(idx - 1, 0), self.NUM_INTERVALS - 1)
 
+    def _is_steady_acceleration(self) -> bool:
+        """
+        Detect steady-state acceleration (not pedal transients)
+
+        Criteria for steady acceleration:
+        - Acceleration history buffer full (3 seconds of data)
+        - Low variance (< 0.2 m/s²) - stable pedal input
+        - Moderate positive acceleration (0 to 0.8 m/s²)
+        - No brake input (pure acceleration)
+
+        This filters out:
+        - Initial gas pedal press (transient)
+        - Pedal modulation (driver adjusting)
+        - Emergency acceleration (> 0.8 m/s²)
+        """
+        # Update acceleration history
+        self.accel_history.append(self.a_ego)
+
+        # Need full history (3 seconds at 20Hz = 60 samples)
+        if len(self.accel_history) < self.ACCEL_HISTORY_LEN:
+            return False
+
+        # Calculate statistics
+        accel_std = np.std(self.accel_history)
+        accel_mean = np.mean(self.accel_history)
+
+        # Check steady-state conditions
+        return (accel_std < self.ACCEL_STD_THRESHOLD and   # Low variance (stable)
+                self.MIN_ACCEL < accel_mean < self.MAX_ACCEL and  # Moderate acceleration
+                not self.brake_pressed)  # No braking
+
     def _estimate_driver_t_follow(self) -> float:
         """
         Estimate driver's preferred T_FOLLOW from current following behavior
 
-        From MPC safe distance calculation:
-        d_safe = v_ego * T_FOLLOW + (v_ego² - v_lead²) / (2 * a_comfort)
+        Works for both deceleration (positive vrel) and acceleration (negative vrel).
 
-        Rearrange to solve for T_FOLLOW:
-        T_FOLLOW = (d_actual - (v_ego² - v_lead²) / (2 * a_comfort)) / v_ego
+        POSITIVE VREL (approaching slower lead):
+        - Use MPC safe distance equation
+        - d_safe = v_ego * T_FOLLOW + (v_ego² - v_lead²) / (2 * a_comfort)
+        - Solve for T_FOLLOW: (d_actual - decel_distance) / v_ego
+
+        NEGATIVE VREL (catching up to faster lead):
+        - Use current distance as target
+        - Driver's chosen distance reflects comfort at current speed
+        - T_FOLLOW = d_actual / v_ego
         """
         if self.v_ego < 0.1:
             return self.BASELINE_T_FOLLOW
 
-        a_comfort = -1.0  # m/s² - comfortable deceleration (MPC default)
+        vrel = self.v_ego - self.v_lead
 
-        # Calculate deceleration compensation term
-        v_squared_diff = self.v_ego ** 2 - self.v_lead ** 2
-        decel_distance = v_squared_diff / (2.0 * abs(a_comfort))
+        if vrel >= 0:
+            # DECELERATION: Approaching slower lead
+            a_comfort = -1.0  # m/s² - comfortable deceleration (MPC default)
 
-        # Solve for T_FOLLOW
-        time_gap_distance = self.d_lead - decel_distance
-        driver_t_follow = time_gap_distance / self.v_ego
+            # Calculate deceleration compensation term
+            v_squared_diff = self.v_ego ** 2 - self.v_lead ** 2
+            decel_distance = v_squared_diff / (2.0 * abs(a_comfort))
+
+            # Solve for T_FOLLOW
+            time_gap_distance = self.d_lead - decel_distance
+            driver_t_follow = time_gap_distance / self.v_ego
+        else:
+            # ACCELERATION: Catching up to faster lead
+            # During steady acceleration, driver's chosen distance reflects
+            # their comfort level at current speed (no decel compensation needed)
+            driver_t_follow = self.d_lead / self.v_ego
 
         # Sanity check: reasonable T_FOLLOW range [0.5s, 5.0s]
         driver_t_follow = np.clip(driver_t_follow, 0.5, 5.0)
@@ -151,8 +217,8 @@ class PersonalizedLongitudinalLearner(LearnerClass):
         # Determine which interval this data belongs to
         interval_idx = self._get_vrel_interval(vrel)
 
-        # Quality filtering conditions
-        valid_conditions = [
+        # Common quality filtering conditions (apply to both positive and negative vrel)
+        common_conditions = [
             # Manual driving (NOT cruise/openpilot)
             not self.long_active,
             not self.cruise_enabled,
@@ -160,22 +226,37 @@ class PersonalizedLongitudinalLearner(LearnerClass):
             # Lead vehicle detected by vision
             self.lead_status,
 
-            # Approaching slower lead
-            vrel >= self.MIN_VREL,
-
-            # Driver decelerating (maintaining following distance)
-            self.MIN_DECEL <= self.a_ego <= self.MAX_DECEL,
-
             # Reasonable speeds for measurement
             self.MIN_VEGO <= self.v_ego <= self.MAX_VEGO,
 
             # Valid lead data
             self.v_lead > 0.1,
             0.0 < self.d_lead < self.MAX_LEAD_DISTANCE,
-
-            # No gas input (pure manual braking/coasting)
-            not self.gas_pressed,
         ]
+
+        # Phase-specific conditions based on vrel sign
+        if vrel >= self.MIN_VREL:
+            # POSITIVE VREL: Approaching slower lead (deceleration phase)
+            phase_conditions = [
+                self.MIN_DECEL <= self.a_ego <= self.MAX_DECEL,  # Decelerating
+                not self.gas_pressed,  # No gas input (pure braking/coasting)
+            ]
+        elif vrel <= -self.MIN_VREL:
+            # NEGATIVE VREL: Catching up to faster lead (acceleration phase)
+            phase_conditions = [
+                self.MIN_ACCEL <= self.a_ego <= self.MAX_ACCEL,  # Accelerating
+                self.gas_pressed,  # Gas input required
+                self._is_steady_acceleration(),  # Steady state (not transients)
+            ]
+        else:
+            # Near-zero vrel: Matching speed (coasting phase)
+            phase_conditions = [
+                -0.3 <= self.a_ego <= 0.3,  # Near-zero acceleration
+                not self.gas_pressed,  # Coasting (no pedal input)
+            ]
+
+        # Combine all conditions
+        valid_conditions = common_conditions + phase_conditions
 
         if all(valid_conditions):
             # Estimate driver's actual T_FOLLOW behavior
@@ -258,9 +339,21 @@ class PersonalizedLongitudinalLearner(LearnerClass):
 
     def reset(self, learned_scales: list[float], valid_blocks_list: list[int], block_data: np.ndarray = None):
         """Reset with learned scales and raw block data from persistent storage"""
+        num_loaded = len(learned_scales)
+
+        # Validate data size (expect 9 intervals)
+        if num_loaded != self.NUM_INTERVALS:
+            cloudlog.warning(f"Invalid T_FOLLOW data size: {num_loaded}, expected {self.NUM_INTERVALS}. Using defaults.")
+            learned_scales = [1.0] * self.NUM_INTERVALS
+            valid_blocks_list = [0] * self.NUM_INTERVALS
+            block_data = None
+        else:
+            cloudlog.info(f"Loaded T_FOLLOW with {self.NUM_INTERVALS} intervals (symmetric vrel)")
+
+        # Proceed with initialization
         if block_data is not None and len(block_data) > 0:
-            # NEW: Restore BlockAverage with actual block values for proper std calculation
-            # block_data is flattened array from all 5 intervals
+            # Restore BlockAverage with actual block values for proper std calculation
+            # block_data is flattened array from all intervals
             offset = 0
             for idx, valid_blocks in enumerate(valid_blocks_list):
                 if valid_blocks > 0:
@@ -288,7 +381,7 @@ class PersonalizedLongitudinalLearner(LearnerClass):
 
     def get_serialization_data(self):
         """Get data for serialization"""
-        # Collect all block data from 5 intervals
+        # Collect all block data from 9 intervals
         block_data_list = []
         for ba in self.block_averages:
             block_data = ba.get_block_data()  # Shape: (valid_blocks, 1)
