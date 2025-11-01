@@ -149,6 +149,23 @@ class BlockAverage:
 
     return valid_mean, valid_std, current_mean, current_std
 
+  def get_block_data(self) -> np.ndarray:
+    """Get block values for serialization (only valid blocks)"""
+    return self.values[:self.valid_blocks].copy()
+
+  @staticmethod
+  def from_block_data(num_blocks: int, block_size: int, valid_blocks: int, block_data: np.ndarray):
+    """Create BlockAverage from serialized block data"""
+    initial_value = float(np.mean(block_data)) if len(block_data) > 0 else 1.0
+    ba = BlockAverage(num_blocks, block_size, valid_blocks, initial_value)
+
+    # Restore actual block values
+    if len(block_data) > 0:
+      loaded_count = min(len(block_data), num_blocks)
+      ba.values[:loaded_count] = block_data[:loaded_count].reshape(-1, 1)
+
+    return ba
+
 
 class CurveSegmentBuffer:
   """
@@ -715,13 +732,35 @@ class PersonalizedLongitudinalLearner:
     self.current_interval = -1
     self.last_estimate_t = 0.0
 
-  def reset(self, learned_scales: list[float], valid_blocks_list: list[int]):
-    """Reset with learned scales from persistent storage"""
-    for idx, (scale, valid_blocks) in enumerate(zip(learned_scales, valid_blocks_list)):
-      self.block_averages[idx] = BlockAverage(
-        self.BLOCK_NUM, self.BLOCK_SIZE, valid_blocks, scale
-      )
-    cloudlog.info(f"PersonalizedLongitudinalLearner initialized with learned scales: {learned_scales}")
+  def reset(self, learned_scales: list[float], valid_blocks_list: list[int], block_data: np.ndarray = None):
+    """Reset with learned scales and raw block data from persistent storage"""
+    if block_data is not None and len(block_data) > 0:
+      # NEW: Restore BlockAverage with actual block values for proper std calculation
+      # block_data is flattened array from all 5 intervals
+      offset = 0
+      for idx, valid_blocks in enumerate(valid_blocks_list):
+        if valid_blocks > 0:
+          # Extract block data for this interval
+          interval_block_data = block_data[offset:offset + valid_blocks]
+          offset += valid_blocks
+
+          # Reconstruct BlockAverage with actual block values
+          self.block_averages[idx] = BlockAverage.from_block_data(
+            self.BLOCK_NUM, self.BLOCK_SIZE, valid_blocks, interval_block_data.reshape(-1, 1)
+          )
+        else:
+          # No valid blocks - use default initialization
+          self.block_averages[idx] = BlockAverage(
+            self.BLOCK_NUM, self.BLOCK_SIZE, 0, learned_scales[idx]
+          )
+      cloudlog.info(f"PersonalizedLongitudinalLearner initialized with {len(block_data)} raw block values")
+    else:
+      # Legacy path: Only scales available (no raw block data)
+      for idx, (scale, valid_blocks) in enumerate(zip(learned_scales, valid_blocks_list)):
+        self.block_averages[idx] = BlockAverage(
+          self.BLOCK_NUM, self.BLOCK_SIZE, valid_blocks, scale
+        )
+      cloudlog.info(f"PersonalizedLongitudinalLearner initialized with learned scales: {learned_scales}")
 
   def handle_log(self, t: float, which: str, msg):
     """Update state from subscribed messages"""
@@ -1253,10 +1292,17 @@ def retrieve_initial_lag(params: Params, CP: car.CarParams):
           personalized_scales = list(ld.personalizedScales)
           personalized_valid_blocks = list(ld.personalizedValidBlocks)
           personalized_status = ld.personalizedStatus
+
+          # NEW: Load raw block data for proper std calculation
+          if hasattr(ld, 'personalizedBlockData') and len(ld.personalizedBlockData) > 0:
+            personalized_block_data = np.array(ld.personalizedBlockData, dtype=np.float32)
+          else:
+            personalized_block_data = None
         else:
           personalized_scales = None
           personalized_valid_blocks = None
           personalized_status = None
+          personalized_block_data = None
 
         # Curve speed control - load segment buffer data
         if hasattr(ld, 'curveSpeedValidSegments') and ld.curveSpeedValidSegments > 0:
@@ -1278,7 +1324,7 @@ def retrieve_initial_lag(params: Params, CP: car.CarParams):
         return {
           'lateral': (lateral_lag, lateral_valid_blocks) if lateral_status == log.LiveDelayData.Status.estimated else None,
           'longitudinal': (longitudinal_lag, longitudinal_valid_blocks) if longitudinal_status == log.LiveDelayData.Status.estimated else None,
-          'personalized': (personalized_scales, personalized_valid_blocks) if personalized_scales and personalized_status == log.LiveDelayData.PersonalizedStatus.learned else None,
+          'personalized': (personalized_scales, personalized_valid_blocks, personalized_block_data) if personalized_scales and personalized_status == log.LiveDelayData.PersonalizedStatus.learned else None,
           'curve_speed': (curve_speed_buffer, curve_speed_valid_segments) if curve_speed_buffer is not None and curve_speed_status == log.LiveDelayData.PersonalizedStatus.learned else None,
         }
     except Exception as e:
@@ -1360,8 +1406,8 @@ def main():
       # cloudlog.info is already in reset() method
 
     if initial_lag_params.get('personalized') is not None:
-      personalized_scales, personalized_valid_blocks = initial_lag_params['personalized']
-      personalized_learner.reset(personalized_scales, personalized_valid_blocks)
+      personalized_scales, personalized_valid_blocks, personalized_block_data = initial_lag_params['personalized']
+      personalized_learner.reset(personalized_scales, personalized_valid_blocks, personalized_block_data)
       # cloudlog.info is already in reset() method
 
     if initial_lag_params.get('curve_speed') is not None:
@@ -1429,6 +1475,15 @@ def main():
       liveDelay.personalizedProgress = personalized_data['personalizedProgress']
       liveDelay.personalizedStatus = personalized_data['personalizedStatus']
       liveDelay.personalizedActiveInterval = personalized_data['personalizedActiveInterval']
+
+      # NEW: Serialize BlockAverage block data for persistence
+      block_data_list = []
+      for interval_learner in personalized_learner.interval_learners:
+        block_data = interval_learner.get_block_data()  # Shape: (valid_blocks, 1)
+        block_data_list.append(block_data.flatten())
+      # Flatten all intervals into single list
+      all_blocks = np.concatenate(block_data_list) if block_data_list else np.array([])
+      liveDelay.personalizedBlockData = all_blocks.tolist()
 
       # Add curve speed control data
       curve_speed_data = curve_speed_learner.get_curve_speed_msg_data()

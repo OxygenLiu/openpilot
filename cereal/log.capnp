@@ -2337,6 +2337,9 @@ struct LiveDelayData {
   # NEW: Raw segment buffer for persistent learning (50 segments × 4 params = 200 floats)
   curveSpeedSegmentBuffer @34 :List(Float32);   # Flattened [valid_segments, 4] array
 
+  # NEW: Raw block data for T_FOLLOW persistent learning (5 intervals × 50 blocks = 250 floats)
+  personalizedBlockData @35 :List(Float32);     # Flattened BlockAverage.values for all 5 intervals
+
   enum Status {
     unestimated @0;
     estimated @1;
