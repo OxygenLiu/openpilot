@@ -2328,6 +2328,15 @@ struct LiveDelayData {
   curveSpeedProgress @28 :UInt8;                # Learning progress 0-100%
   curveSpeedStatus @29 :PersonalizedStatus;     # Learning status
 
+  # NEW: Standard deviations for confidence metrics
+  curveSpeedLookaheadTimeStd @30 :Float32;         # Std of lookahead time
+  curveSpeedLatAccelLimitStd @31 :Float32;         # Std of lateral accel limit
+  curveSpeedSpeedMarginStd @32 :Float32;           # Std of speed margin
+  curveSpeedMinCurvatureThresholdStd @33 :Float32; # Std of min curvature
+
+  # NEW: Raw segment buffer for persistent learning (50 segments × 4 params = 200 floats)
+  curveSpeedSegmentBuffer @34 :List(Float32);   # Flattened [valid_segments, 4] array
+
   enum Status {
     unestimated @0;
     estimated @1;

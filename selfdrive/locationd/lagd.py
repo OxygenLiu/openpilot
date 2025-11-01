@@ -150,6 +150,96 @@ class BlockAverage:
     return valid_mean, valid_std, current_mean, current_std
 
 
+class CurveSegmentBuffer:
+  """
+  Circular buffer storing 50 most recent curve segments for persistent learning
+  Each segment contains extracted parameters: [lookahead_time, lat_accel_limit, speed_margin, min_curvature]
+  """
+  SEGMENTS_NEEDED = 50  # Total segments to store (sliding window)
+
+  def __init__(self, valid_segments: int = 0, segment_data: np.ndarray = None):
+    """
+    Args:
+        valid_segments: Number of segments collected (0-50)
+        segment_data: Pre-loaded segment data [valid_segments, 4] array
+    """
+    self.num_segments = self.SEGMENTS_NEEDED
+    self.valid_segments = min(valid_segments, self.num_segments)
+    self.segment_idx = self.valid_segments % self.num_segments  # Current write position
+
+    # Segment data storage: [num_segments, 4] array
+    # Each row: [lookahead_time, lat_accel_limit, speed_margin, min_curvature]
+    if segment_data is not None and len(segment_data) > 0:
+      # Load from persistent storage
+      self.segments = np.zeros((self.num_segments, 4), dtype=np.float32)
+      loaded_count = min(len(segment_data), self.num_segments)
+      self.segments[:loaded_count] = segment_data[:loaded_count]
+    else:
+      # Initialize with defaults [3.0s, 2.0 m/s², 0.85, 0.003 rad/m]
+      self.segments = np.tile([3.0, 2.0, 0.85, 0.003], (self.num_segments, 1)).astype(np.float32)
+
+  def add_segment(self, lookahead: float, lat_accel: float, margin: float, min_curv: float):
+    """Add new segment to circular buffer (oldest replaced when full)"""
+    self.segments[self.segment_idx] = [lookahead, lat_accel, margin, min_curv]
+
+    # Move to next position (circular)
+    self.segment_idx = (self.segment_idx + 1) % self.num_segments
+
+    # Increment valid count (saturates at num_segments)
+    self.valid_segments = min(self.valid_segments + 1, self.num_segments)
+
+  def get_parameters(self) -> tuple[dict, dict]:
+    """
+    Calculate median and std for all 4 parameters from valid segments
+
+    Returns:
+        mean_params: Dict with median values (robust to outliers)
+        std_params: Dict with std values (confidence metric)
+    """
+    if self.valid_segments == 0:
+      # No data - return defaults
+      return {
+        'lookahead_time': 3.0,
+        'lat_accel_limit': 2.0,
+        'speed_margin': 0.85,
+        'min_curvature_threshold': 0.003
+      }, {
+        'lookahead_time_std': 0.0,
+        'lat_accel_limit_std': 0.0,
+        'speed_margin_std': 0.0,
+        'min_curvature_threshold_std': 0.0
+      }
+
+    # Use only valid segments for statistics
+    valid_data = self.segments[:self.valid_segments]
+
+    # Calculate median (robust to outliers)
+    mean_params = {
+      'lookahead_time': float(np.median(valid_data[:, 0])),
+      'lat_accel_limit': float(np.median(valid_data[:, 1])),
+      'speed_margin': float(np.median(valid_data[:, 2])),
+      'min_curvature_threshold': float(np.median(valid_data[:, 3]))
+    }
+
+    # Calculate std for confidence estimation
+    std_params = {
+      'lookahead_time_std': float(np.std(valid_data[:, 0])),
+      'lat_accel_limit_std': float(np.std(valid_data[:, 1])),
+      'speed_margin_std': float(np.std(valid_data[:, 2])),
+      'min_curvature_threshold_std': float(np.std(valid_data[:, 3]))
+    }
+
+    return mean_params, std_params
+
+  def get_buffer_data(self) -> np.ndarray:
+    """Get segment data for serialization (only valid segments)"""
+    return self.segments[:self.valid_segments].copy()
+
+  def is_learned(self) -> bool:
+    """Check if enough segments collected for confident learning"""
+    return self.valid_segments >= self.SEGMENTS_NEEDED
+
+
 class LongitudinalLagEstimator:
   inputs = {"carControl", "carState", "controlsState", "modelV2", "longitudinalPlan"}
 
@@ -928,14 +1018,10 @@ class CurveSpeedLearner:
     self.dt = dt
     self.t = 0.0
 
-    # Learned parameters (start with defaults)
-    self.lookahead_time = self.INITIAL_LOOKAHEAD_TIME
-    self.lat_accel_limit = self.INITIAL_LAT_ACCEL_LIMIT
-    self.speed_margin = self.INITIAL_SPEED_MARGIN
-    self.min_curvature_threshold = self.INITIAL_MIN_CURVATURE
+    # Segment buffer (circular, persistent) - replaces old sample accumulators
+    self.segment_buffer = CurveSegmentBuffer()
 
-    # Segment collection
-    self.valid_segments = 0  # Count of valid 10-second segments
+    # Current segment accumulation
     self.segment_data = []   # Accumulate data for current segment
     self.segment_start_time = None
     self.in_valid_segment = False
@@ -948,20 +1034,10 @@ class CurveSpeedLearner:
     self.lead_status = False
     self.curvature = 0.0  # Calculated from modelV2
 
-    # Learning accumulators for parameter extraction
-    self.lat_accel_samples = []      # Observed lateral accelerations
-    self.speed_margin_samples = []   # Observed speed margins
-    self.lookahead_samples = []      # Observed lookahead behavior
-    self.curvature_samples = []      # Minimum curvatures driver responds to
-
-  def reset(self, params_dict: dict, valid_segments: int):
-    """Reset with learned parameters from persistent storage"""
-    self.lookahead_time = params_dict.get('lookahead_time', self.INITIAL_LOOKAHEAD_TIME)
-    self.lat_accel_limit = params_dict.get('lat_accel_limit', self.INITIAL_LAT_ACCEL_LIMIT)
-    self.speed_margin = params_dict.get('speed_margin', self.INITIAL_SPEED_MARGIN)
-    self.min_curvature_threshold = params_dict.get('min_curvature_threshold', self.INITIAL_MIN_CURVATURE)
-    self.valid_segments = valid_segments
-    cloudlog.info(f"CurveSpeedLearner initialized with {valid_segments} segments, params: {params_dict}")
+  def reset(self, segment_buffer_data: np.ndarray, valid_segments: int):
+    """Reset with learned segments from persistent storage"""
+    self.segment_buffer = CurveSegmentBuffer(valid_segments, segment_buffer_data)
+    cloudlog.info(f"CurveSpeedLearner initialized with {valid_segments} segments")
 
   def handle_log(self, t: float, which: str, msg):
     """Update state from subscribed messages"""
@@ -1081,91 +1157,70 @@ class CurveSpeedLearner:
 
     # 1. Lateral acceleration limit: max comfortable lat accel observed
     max_lat_accel = max(lat_accels)
-    self.lat_accel_samples.append(max_lat_accel)
 
     # 2. Speed margin: Calculate theoretical safe speed vs actual speed
-    # Safe speed for max curvature: v_safe = sqrt(lat_accel_limit / curvature)
     max_curv = max(curvatures)
     if max_curv > 0.001:
-      # Theoretical safe speed using current lat_accel_limit assumption
       theoretical_safe_speed = np.sqrt(self.INITIAL_LAT_ACCEL_LIMIT / max_curv)
       actual_speed = np.mean(speeds)
-      # Margin = actual / theoretical (conservative driver < 1.0)
       observed_margin = actual_speed / theoretical_safe_speed if theoretical_safe_speed > 0 else 0.85
-      self.speed_margin_samples.append(np.clip(observed_margin, 0.5, 1.0))
+      observed_margin = np.clip(observed_margin, 0.5, 1.0)
+    else:
+      observed_margin = 0.85
 
     # 3. Minimum curvature threshold: what curvatures driver responds to
     min_curv = min(curvatures)
-    self.curvature_samples.append(min_curv)
 
     # 4. Lookahead time: estimate from deceleration timing
-    # Find when deceleration started relative to max curvature
     max_curv_idx = curvatures.index(max_curv)
     decel_start_idx = next((i for i, a in enumerate(accels) if a < -0.5), max_curv_idx)
     time_before_curve = (max_curv_idx - decel_start_idx) * self.dt
-    if time_before_curve > 0:
-      self.lookahead_samples.append(time_before_curve)
+    lookahead = max(0.5, time_before_curve) if time_before_curve > 0 else 3.0
 
-    # Update valid segment count
-    self.valid_segments += 1
+    # Clip parameters to valid bounds
+    lookahead = np.clip(lookahead, self.LOOKAHEAD_TIME_MIN, self.LOOKAHEAD_TIME_MAX)
+    max_lat_accel = np.clip(max_lat_accel, self.LAT_ACCEL_LIMIT_MIN, self.LAT_ACCEL_LIMIT_MAX)
+    observed_margin = np.clip(observed_margin, self.SPEED_MARGIN_MIN, self.SPEED_MARGIN_MAX)
+    min_curv = np.clip(min_curv, self.MIN_CURVATURE_MIN, self.MIN_CURVATURE_MAX)
 
-    # Update learned parameters using median of samples
-    if self.valid_segments >= self.SEGMENTS_NEEDED:
-      self._update_learned_parameters()
+    # Add to circular buffer (oldest replaced if full)
+    self.segment_buffer.add_segment(lookahead, max_lat_accel, observed_margin, min_curv)
 
-    cloudlog.info(f"CurveSpeedLearner: Segment #{self.valid_segments} complete, "
-                  f"max_curv={max_curv:.4f}, max_lat_accel={max_lat_accel:.2f}")
-
-  def _update_learned_parameters(self):
-    """Update learned parameters from accumulated samples"""
-    # Use median for robustness against outliers
-    if len(self.lat_accel_samples) >= 10:
-      self.lat_accel_limit = np.clip(
-        float(np.median(self.lat_accel_samples)),
-        self.LAT_ACCEL_LIMIT_MIN, self.LAT_ACCEL_LIMIT_MAX
-      )
-
-    if len(self.speed_margin_samples) >= 10:
-      self.speed_margin = np.clip(
-        float(np.median(self.speed_margin_samples)),
-        self.SPEED_MARGIN_MIN, self.SPEED_MARGIN_MAX
-      )
-
-    if len(self.lookahead_samples) >= 10:
-      self.lookahead_time = np.clip(
-        float(np.median(self.lookahead_samples)),
-        self.LOOKAHEAD_TIME_MIN, self.LOOKAHEAD_TIME_MAX
-      )
-
-    if len(self.curvature_samples) >= 10:
-      self.min_curvature_threshold = np.clip(
-        float(np.median(self.curvature_samples)),
-        self.MIN_CURVATURE_MIN, self.MIN_CURVATURE_MAX
-      )
+    cloudlog.info(f"Curve segment #{self.segment_buffer.valid_segments} added: "
+                  f"lookahead={lookahead:.2f}s, lat_accel={max_lat_accel:.2f}, "
+                  f"margin={observed_margin:.2f}, min_curv={min_curv:.4f}")
 
   def get_learning_progress(self) -> int:
     """Return learning progress as percentage (0-100%)"""
-    return min(100, int(100 * self.valid_segments / self.SEGMENTS_NEEDED))
+    return min(100, int(100 * self.segment_buffer.valid_segments / self.SEGMENTS_NEEDED))
 
   def get_status(self):
     """Return learning status enum"""
-    if self.valid_segments == 0:
+    if self.segment_buffer.valid_segments == 0:
       return log.LiveDelayData.PersonalizedStatus.unlearned
-    elif self.valid_segments < self.SEGMENTS_NEEDED:
+    elif self.segment_buffer.valid_segments < self.SEGMENTS_NEEDED:
       return log.LiveDelayData.PersonalizedStatus.learning
     else:
       return log.LiveDelayData.PersonalizedStatus.learned
 
   def get_curve_speed_msg_data(self) -> dict:
     """Generate curve speed learning data for liveDelay message"""
+    # Get learned parameters and standard deviations from buffer
+    mean_params, std_params = self.segment_buffer.get_parameters()
+
     return {
-      'curveSpeedLookaheadTime': float(self.lookahead_time),
-      'curveSpeedLatAccelLimit': float(self.lat_accel_limit),
-      'curveSpeedSpeedMargin': float(self.speed_margin),
-      'curveSpeedMinCurvatureThreshold': float(self.min_curvature_threshold),
-      'curveSpeedValidSegments': int(self.valid_segments),
+      'curveSpeedLookaheadTime': mean_params['lookahead_time'],
+      'curveSpeedLatAccelLimit': mean_params['lat_accel_limit'],
+      'curveSpeedSpeedMargin': mean_params['speed_margin'],
+      'curveSpeedMinCurvatureThreshold': mean_params['min_curvature_threshold'],
+      'curveSpeedValidSegments': int(self.segment_buffer.valid_segments),
       'curveSpeedProgress': self.get_learning_progress(),
       'curveSpeedStatus': self.get_status(),
+      # Standard deviations for confidence
+      'curveSpeedLookaheadTimeStd': std_params['lookahead_time_std'],
+      'curveSpeedLatAccelLimitStd': std_params['lat_accel_limit_std'],
+      'curveSpeedSpeedMarginStd': std_params['speed_margin_std'],
+      'curveSpeedMinCurvatureThresholdStd': std_params['min_curvature_threshold_std'],
     }
 
 
@@ -1203,18 +1258,19 @@ def retrieve_initial_lag(params: Params, CP: car.CarParams):
           personalized_valid_blocks = None
           personalized_status = None
 
-        # Curve speed control parameters
+        # Curve speed control - load segment buffer data
         if hasattr(ld, 'curveSpeedValidSegments') and ld.curveSpeedValidSegments > 0:
-          curve_speed_params = {
-            'lookahead_time': ld.curveSpeedLookaheadTime,
-            'lat_accel_limit': ld.curveSpeedLatAccelLimit,
-            'speed_margin': ld.curveSpeedSpeedMargin,
-            'min_curvature_threshold': ld.curveSpeedMinCurvatureThreshold,
-          }
+          # Load raw segment buffer (50 segments × 4 parameters = 200 floats)
+          if hasattr(ld, 'curveSpeedSegmentBuffer') and len(ld.curveSpeedSegmentBuffer) > 0:
+            buffer_data = np.array(ld.curveSpeedSegmentBuffer, dtype=np.float32).reshape(-1, 4)
+            curve_speed_buffer = buffer_data
+          else:
+            curve_speed_buffer = None
+
           curve_speed_valid_segments = ld.curveSpeedValidSegments
           curve_speed_status = ld.curveSpeedStatus
         else:
-          curve_speed_params = None
+          curve_speed_buffer = None
           curve_speed_valid_segments = None
           curve_speed_status = None
 
@@ -1223,7 +1279,7 @@ def retrieve_initial_lag(params: Params, CP: car.CarParams):
           'lateral': (lateral_lag, lateral_valid_blocks) if lateral_status == log.LiveDelayData.Status.estimated else None,
           'longitudinal': (longitudinal_lag, longitudinal_valid_blocks) if longitudinal_status == log.LiveDelayData.Status.estimated else None,
           'personalized': (personalized_scales, personalized_valid_blocks) if personalized_scales and personalized_status == log.LiveDelayData.PersonalizedStatus.learned else None,
-          'curve_speed': (curve_speed_params, curve_speed_valid_segments) if curve_speed_params and curve_speed_status == log.LiveDelayData.PersonalizedStatus.learned else None,
+          'curve_speed': (curve_speed_buffer, curve_speed_valid_segments) if curve_speed_buffer is not None and curve_speed_status == log.LiveDelayData.PersonalizedStatus.learned else None,
         }
     except Exception as e:
       cloudlog.error(f"Failed to retrieve initial lag: {e}")
@@ -1383,6 +1439,16 @@ def main():
       liveDelay.curveSpeedValidSegments = curve_speed_data['curveSpeedValidSegments']
       liveDelay.curveSpeedProgress = curve_speed_data['curveSpeedProgress']
       liveDelay.curveSpeedStatus = curve_speed_data['curveSpeedStatus']
+
+      # NEW: Standard deviations for confidence
+      liveDelay.curveSpeedLookaheadTimeStd = curve_speed_data['curveSpeedLookaheadTimeStd']
+      liveDelay.curveSpeedLatAccelLimitStd = curve_speed_data['curveSpeedLatAccelLimitStd']
+      liveDelay.curveSpeedSpeedMarginStd = curve_speed_data['curveSpeedSpeedMarginStd']
+      liveDelay.curveSpeedMinCurvatureThresholdStd = curve_speed_data['curveSpeedMinCurvatureThresholdStd']
+
+      # NEW: Serialize segment buffer for persistence
+      segment_buffer_data = curve_speed_learner.segment_buffer.get_buffer_data()
+      liveDelay.curveSpeedSegmentBuffer = segment_buffer_data.flatten().tolist()
 
       lag_msg_dat = lag_msg.to_bytes()
       pm.send('liveDelay', lag_msg_dat)
