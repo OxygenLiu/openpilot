@@ -141,8 +141,9 @@ class Controls:
     current_frame_time = self.sm.logMonoTime['selfdriveState'] * 1e-9
     self.long_lag_learner.handle_log(current_frame_time, "carControl", CC)
 
-    self.long_lag_learner.update_points()
-    self.long_lag_learner.update_estimate()
+    # Refactored learners call update() internally during handle_log()
+    # update_estimate() is called at 4Hz by lagd.py orchestrator
+    # No need to call update_points() - removed in refactoring
 
     # Use delay-compensated MPC velocity target (accounts for longitudinalActuatorDelay)
     # vTarget = v_desired_trajectory interpolated at (actuatorDelay + DT_MDL)
