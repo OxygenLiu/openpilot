@@ -64,8 +64,11 @@ class PersonalizedLongitudinalLearner(LearnerClass):
     MIN_SEGMENT_DURATION = 5.0  # seconds - minimum continuous valid segment
     MAX_LEAD_DISTANCE = 200.0   # m - BMW vision ModelV2 detection range (highway conditions)
 
-    # T_FOLLOW baseline reference (standard personality)
-    BASELINE_T_FOLLOW = 1.45  # seconds
+    # T_FOLLOW baseline reference
+    # BMW E90 tuned value based on 89 manual driving following segments (median 1.82s)
+    # Matches openpilot "Relaxed" mode (1.8s) for comfortable initial behavior
+    # PersonalizedLongitudinalLearner will adapt to actual driver preference over time
+    BASELINE_T_FOLLOW = 1.8  # seconds (was 1.45s standard, now 1.8s relaxed)
 
     def __init__(self, CP: car.CarParams, dt: float = 0.05):
         super().__init__(CP, dt)
