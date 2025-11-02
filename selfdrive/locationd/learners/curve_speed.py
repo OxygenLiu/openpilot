@@ -27,7 +27,7 @@ from selfdrive.locationd.learners.base import LearnerClass, CurveSegmentBuffer
 class CurveSpeedLearner(LearnerClass):
     """Learn driver's preferred curve speed control parameters"""
 
-    inputs = {"carState", "radarState", "controlsState", "modelV2"}
+    inputs = {"carState", "radarState", "carControl", "modelV2"}
 
     # Learning parameters
     MIN_SEGMENT_DURATION = 10.0    # seconds - minimum continuous curve segment
@@ -80,7 +80,7 @@ class CurveSpeedLearner(LearnerClass):
             self.cruise_enabled = msg.cruiseState.enabled
         elif which == "radarState":
             self.lead_status = msg.leadOne.status
-        elif which == "controlsState":
+        elif which == "carControl":
             self.long_active = msg.longActive
         elif which == "modelV2":
             # Calculate path curvature from modelV2 position trajectory
