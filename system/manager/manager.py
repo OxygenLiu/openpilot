@@ -34,6 +34,9 @@ def manager_init() -> None:
   if build_metadata.release_channel:
     params.clear_all(ParamKeyFlag.DEVELOPMENT_ONLY)
 
+  # Always disable DCC calibration mode on startup (safety: prevent accidental manual-only mode)
+  params.put_bool("DccCalibrationMode", False)
+
   if params.get_bool("RecordFrontLock"):
     params.put_bool("RecordFront", True)
 
