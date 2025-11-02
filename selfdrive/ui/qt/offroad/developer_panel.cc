@@ -25,6 +25,12 @@ DeveloperPanel::DeveloperPanel(SettingsWindow *parent) : ListWidget(parent) {
   });
   addItem(longManeuverToggle);
 
+  dccCalibrationToggle = new ParamControl("DccCalibrationMode",
+    tr("DCC Calibration Mode"),
+    tr("Disable openpilot engagement to allow manual DCC testing. All CAN data (velocity, DCC commands, acceleration) will continue to be logged for tuning analysis."),
+    "");
+  addItem(dccCalibrationToggle);
+
   experimentalLongitudinalToggle = new ParamControl(
     "AlphaLongitudinalEnabled",
     tr("openpilot Longitudinal Control (Alpha)"),
@@ -81,6 +87,7 @@ void DeveloperPanel::updateToggles(bool _offroad) {
     experimentalLongitudinalToggle->setVisible(CP.getAlphaLongitudinalAvailable() && !is_release);
 
     longManeuverToggle->setEnabled(hasLongitudinalControl(CP) && _offroad);
+    dccCalibrationToggle->setEnabled(hasLongitudinalControl(CP) && _offroad);
   } else {
     longManeuverToggle->setEnabled(false);
     experimentalLongitudinalToggle->setVisible(false);
