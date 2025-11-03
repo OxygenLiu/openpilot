@@ -401,6 +401,12 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
                                        "Ensure road ahead is clear"),
   },
 
+  EventName.dccCalibrationMode: {
+    ET.PERMANENT: NormalPermanentAlert("DCC Calibration Mode",
+                                       "Manual DCC Control Only"),
+    ET.NO_ENTRY: NoEntryAlert("DCC Calibration Mode Active"),
+  },
+
   EventName.selfdriveInitializing: {
     ET.NO_ENTRY: NoEntryAlert("System Initializing"),
   },
