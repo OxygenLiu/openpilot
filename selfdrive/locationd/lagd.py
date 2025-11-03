@@ -238,43 +238,43 @@ def main():
             if DEBUG:
                 liveDelay.points = lateral_data['points']
 
-            # Populate longitudinal delay fields
-            liveDelay.longitudinalDelay = longitudinal_data['longitudinalDelay']
-            liveDelay.longitudinalDelayEstimate = longitudinal_data['longitudinalDelayEstimate']
-            liveDelay.longitudinalDelayEstimateStd = longitudinal_data['longitudinalDelayEstimateStd']
-            liveDelay.longitudinalValidBlocks = longitudinal_data['longitudinalValidBlocks']
-            liveDelay.longitudinalStatus = longitudinal_data['longitudinalStatus']
-            liveDelay.longitudinalCalPerc = longitudinal_data['longitudinalCalPerc']
-            liveDelay.visionSpeed = longitudinal_data['visionSpeed']
-            liveDelay.canSpeed = longitudinal_data['canSpeed']
-            liveDelay.visionCanDiff = longitudinal_data['visionCanDiff']
-            liveDelay.visionCanSafetyPassed = longitudinal_data['visionCanSafetyPassed']
+            # Populate longitudinal delay fields (convert numpy types to native Python types)
+            liveDelay.longitudinalDelay = float(longitudinal_data['longitudinalDelay'])
+            liveDelay.longitudinalDelayEstimate = float(longitudinal_data['longitudinalDelayEstimate'])
+            liveDelay.longitudinalDelayEstimateStd = float(longitudinal_data['longitudinalDelayEstimateStd'])
+            liveDelay.longitudinalValidBlocks = int(longitudinal_data['longitudinalValidBlocks'])
+            liveDelay.longitudinalStatus = int(longitudinal_data['longitudinalStatus'])
+            liveDelay.longitudinalCalPerc = float(longitudinal_data['longitudinalCalPerc'])
+            liveDelay.visionSpeed = float(longitudinal_data['visionSpeed'])
+            liveDelay.canSpeed = float(longitudinal_data['canSpeed'])
+            liveDelay.visionCanDiff = float(longitudinal_data['visionCanDiff'])
+            liveDelay.visionCanSafetyPassed = bool(longitudinal_data['visionCanSafetyPassed'])
             if DEBUG:
                 liveDelay.longitudinalPoints = longitudinal_data['longitudinalPoints']
 
             # Populate personalized T_FOLLOW fields
             liveDelay.personalizedScales = personalized_data['personalizedScales']
-            liveDelay.personalizedValidBlocks = personalized_data['personalizedValidBlocks']
-            liveDelay.personalizedProgress = personalized_data['personalizedProgress']
-            liveDelay.personalizedStatus = personalized_data['personalizedStatus']
-            liveDelay.personalizedActiveInterval = personalized_data['personalizedActiveInterval']
+            liveDelay.personalizedValidBlocks = int(personalized_data['personalizedValidBlocks'])
+            liveDelay.personalizedProgress = float(personalized_data['personalizedProgress'])
+            liveDelay.personalizedStatus = int(personalized_data['personalizedStatus'])
+            liveDelay.personalizedActiveInterval = int(personalized_data['personalizedActiveInterval'])
 
             # Serialize personalized block data for persistence
             t_follow_serialization = t_follow_learner.get_serialization_data()
             liveDelay.personalizedBlockData = t_follow_serialization['block_data'].tolist()
 
-            # Populate curve speed control fields
-            liveDelay.curveSpeedLookaheadTime = curve_speed_data['curveSpeedLookaheadTime']
-            liveDelay.curveSpeedLatAccelLimit = curve_speed_data['curveSpeedLatAccelLimit']
-            liveDelay.curveSpeedSpeedMargin = curve_speed_data['curveSpeedSpeedMargin']
-            liveDelay.curveSpeedMinCurvatureThreshold = curve_speed_data['curveSpeedMinCurvatureThreshold']
-            liveDelay.curveSpeedValidSegments = curve_speed_data['curveSpeedValidSegments']
-            liveDelay.curveSpeedProgress = curve_speed_data['curveSpeedProgress']
-            liveDelay.curveSpeedStatus = curve_speed_data['curveSpeedStatus']
-            liveDelay.curveSpeedLookaheadTimeStd = curve_speed_data['curveSpeedLookaheadTimeStd']
-            liveDelay.curveSpeedLatAccelLimitStd = curve_speed_data['curveSpeedLatAccelLimitStd']
-            liveDelay.curveSpeedSpeedMarginStd = curve_speed_data['curveSpeedSpeedMarginStd']
-            liveDelay.curveSpeedMinCurvatureThresholdStd = curve_speed_data['curveSpeedMinCurvatureThresholdStd']
+            # Populate curve speed control fields (convert numpy types to native Python types)
+            liveDelay.curveSpeedLookaheadTime = float(curve_speed_data['curveSpeedLookaheadTime'])
+            liveDelay.curveSpeedLatAccelLimit = float(curve_speed_data['curveSpeedLatAccelLimit'])
+            liveDelay.curveSpeedSpeedMargin = float(curve_speed_data['curveSpeedSpeedMargin'])
+            liveDelay.curveSpeedMinCurvatureThreshold = float(curve_speed_data['curveSpeedMinCurvatureThreshold'])
+            liveDelay.curveSpeedValidSegments = int(curve_speed_data['curveSpeedValidSegments'])
+            liveDelay.curveSpeedProgress = float(curve_speed_data['curveSpeedProgress'])
+            liveDelay.curveSpeedStatus = int(curve_speed_data['curveSpeedStatus'])
+            liveDelay.curveSpeedLookaheadTimeStd = float(curve_speed_data['curveSpeedLookaheadTimeStd'])
+            liveDelay.curveSpeedLatAccelLimitStd = float(curve_speed_data['curveSpeedLatAccelLimitStd'])
+            liveDelay.curveSpeedSpeedMarginStd = float(curve_speed_data['curveSpeedSpeedMarginStd'])
+            liveDelay.curveSpeedMinCurvatureThresholdStd = float(curve_speed_data['curveSpeedMinCurvatureThresholdStd'])
 
             # Serialize curve speed segment buffer for persistence
             curve_speed_serialization = curve_speed_learner.get_serialization_data()
