@@ -252,12 +252,12 @@ def main():
             if DEBUG:
                 liveDelay.longitudinalPoints = longitudinal_data['longitudinalPoints']
 
-            # Populate personalized T_FOLLOW fields
-            liveDelay.personalizedScales = personalized_data['personalizedScales']
-            liveDelay.personalizedValidBlocks = int(personalized_data['personalizedValidBlocks'])
-            liveDelay.personalizedProgress = float(personalized_data['personalizedProgress'])
-            liveDelay.personalizedStatus = int(personalized_data['personalizedStatus'])
-            liveDelay.personalizedActiveInterval = int(personalized_data['personalizedActiveInterval'])
+            # Populate personalized T_FOLLOW fields (convert numpy types to native Python types)
+            liveDelay.personalizedScales = personalized_data['personalizedScales']  # List(Float32) - already list
+            liveDelay.personalizedValidBlocks = [int(x) for x in personalized_data['personalizedValidBlocks']]  # List(UInt16)
+            liveDelay.personalizedProgress = int(personalized_data['personalizedProgress'])  # UInt8
+            liveDelay.personalizedStatus = int(personalized_data['personalizedStatus'])  # PersonalizedStatus enum
+            liveDelay.personalizedActiveInterval = int(personalized_data['personalizedActiveInterval'])  # Int8
 
             # Serialize personalized block data for persistence
             t_follow_serialization = t_follow_learner.get_serialization_data()
