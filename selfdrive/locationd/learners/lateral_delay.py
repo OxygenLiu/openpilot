@@ -10,12 +10,12 @@ Methodology:
 - PoseCalibrator for accurate yaw rate measurement from IMU
 - Store in BlockAverage for statistical stability (50 blocks * 100 samples = 5000 measurements)
 
-Data criteria:
-- Fast speed (v_ego > 10 m/s) for accurate measurement
-- Turning (|yaw_rate| > 0.15 rad/s)
+Data criteria (v0.10.1 production thresholds):
+- Highway speed (v_ego > 15 m/s / 33 mph) for accurate measurement
+- Can learn on straights or turns (yaw_rate >= 0.0 rad/s)
 - Active lateral control without driver override
 - Valid IMU sensors and calibration
-- Sufficient correlation (NCC > 0.8, confidence > 0.2)
+- High correlation (NCC > 0.95, confidence > 0.7)
 - Recovery buffer after invalid conditions (2.0s)
 """
 
@@ -31,22 +31,22 @@ class LateralLagEstimator(LearnerClass):
 
     inputs = {"carControl", "carState", "controlsState", "liveCalibration", "livePose"}
 
-    # Learning parameters (matching lagd.py pattern)
+    # Learning parameters (v0.10.1 production values)
     BLOCK_SIZE = 100          # 100 data points per block (5 seconds at 20Hz)
     BLOCK_NUM = 50            # 50 blocks total history
-    BLOCK_NUM_NEEDED = 10     # 10 valid blocks needed (50 seconds = 10 * 5s)
+    BLOCK_NUM_NEEDED = 5      # 5 valid blocks needed (25 seconds = 5 * 5s) - v0.10.1: faster convergence
 
-    # Quality filtering thresholds
+    # Quality filtering thresholds (v0.10.1 production values)
     MOVING_WINDOW_SEC = 60.0      # 60 second sliding window
-    MIN_OKAY_WINDOW_SEC = 10.0    # Minimum 10s of valid data needed
+    MIN_OKAY_WINDOW_SEC = 25.0    # Minimum 25s of valid data needed - v0.10.1: stricter quality
     MIN_RECOVERY_BUFFER_SEC = 2.0 # 2s recovery buffer after invalid conditions
-    MIN_VEGO = 10.0               # m/s - minimum speed for measurement
-    MIN_ABS_YAW_RATE = 0.15       # rad/s - minimum yaw rate (turning threshold)
+    MIN_VEGO = 15.0               # m/s (33 mph) - v0.10.1: highway speeds only
+    MIN_ABS_YAW_RATE = 0.0        # rad/s - v0.10.1: can learn on straights!
     MAX_YAW_RATE_SANITY_CHECK = 1.0  # rad/s - sanity check for yaw rate
-    MIN_NCC = 0.8                 # Minimum normalized cross-correlation
-    MIN_CONFIDENCE = 0.2          # Minimum confidence threshold
-    MAX_LAT_ACCEL = 5.0           # m/s² - maximum lateral acceleration
-    MAX_LAT_ACCEL_DIFF = 5.0      # m/s² - maximum difference between desired and actual
+    MIN_NCC = 0.95                # v0.10.1: require high correlation (was 0.8)
+    MIN_CONFIDENCE = 0.7          # v0.10.1: require high confidence (was 0.2)
+    MAX_LAT_ACCEL = 2.0           # m/s² - v0.10.1: conservative (was 5.0)
+    MAX_LAT_ACCEL_DIFF = 0.6      # m/s² - v0.10.1: tight tolerance (was 5.0)
     MAX_LAG = 1.0                 # seconds - maximum lag to search
     MAX_LAG_STD = 0.1             # Maximum standard deviation for valid estimate
 
