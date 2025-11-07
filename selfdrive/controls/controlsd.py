@@ -65,7 +65,7 @@ class Controls:
     elif self.CP.lateralTuning.which() == 'pid':
       self.LaC = LatControlPID(self.CP, self.CI)
     elif self.CP.lateralTuning.which() == 'torque':
-      self.LaC = LatControlTorque(self.CP, self.CI)
+      self.LaC = LatControlTorque(self.CP, self.CI, DT_CTRL)
 
   def update(self):
     self.sm.update(15)
