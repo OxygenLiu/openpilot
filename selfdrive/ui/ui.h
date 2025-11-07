@@ -65,22 +65,8 @@ typedef struct UIScene {
   bool bmw_diagnostics_available = false;
   float bmw_coolant_temp = 0.0;
   float bmw_oil_temp = 0.0;
-  int bmw_dtc_count = 0;
-  char bmw_car_fingerprint[32] = "";
-
-  // Extended BMW diagnostics
-  float bmw_intake_air_temp = 0.0;
-  float bmw_exhaust_gas_temp = 0.0;
-  float bmw_fuel_rail_pressure = 0.0;
-  float bmw_turbo_boost_pressure = 0.0;
-  int bmw_engine_rpm = 0;
-  float bmw_engine_load = 0.0;
   float bmw_battery_voltage = 0.0;
-  int bmw_protection_mode = 0;  // 0=Normal, 1=Reduce, 2=Limp
-  float bmw_thermal_stress = 0.0;
-  bool bmw_dtc_active = false;
-  char bmw_active_dtcs[256] = "";  // Comma-separated DTC codes
-  char bmw_dtc_clear_status[128] = "";  // DTC clear eligibility status
+  char bmw_car_fingerprint[32] = "";
 
   // Personalized longitudinal learning data
   float personalized_scales[5] = {1.0, 1.0, 1.0, 1.0, 1.0};  // Scale factors for VREL_BP intervals

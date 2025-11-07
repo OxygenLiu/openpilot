@@ -15,7 +15,6 @@
 #include "selfdrive/ui/qt/widgets/scrollview.h"
 #include "selfdrive/ui/qt/offroad/developer_panel.h"
 #include "selfdrive/ui/qt/offroad/firehose.h"
-#include "selfdrive/ui/qt/widgets/bmw_diagnostics.h"
 
 TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
   // param, title, desc, icon, restart needed
@@ -542,23 +541,44 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   // Vehicle information label
   vehicle_info_lbl = new LabelControl(tr("Vehicle Information"), "");
   addItem(vehicle_info_lbl);
-  
-  // Coolant Temperature Display (prominent)
-  coolant_temp_lbl = new LabelControl(tr("Coolant Temperature"), tr("--°C"));
-  addItem(coolant_temp_lbl);
-  
-  // Oil Temperature Display (prominent)
-  oil_temp_lbl = new LabelControl(tr("Oil Temperature"), tr("--°C"));
-  addItem(oil_temp_lbl);
-  
-  // DTC Status Display
-  dtc_status_lbl = new LabelControl(tr("Diagnostic Codes"), tr("No codes"));
-  addItem(dtc_status_lbl);
 
-  // BMW diagnostics button for detailed view (DTC codes)
-  bmw_diagnostics_btn = new ButtonControl(tr("View DTC Codes"), tr("View active diagnostic trouble codes"));
-  QObject::connect(bmw_diagnostics_btn, &ButtonControl::clicked, this, &VehiclePanel::openBmwDiagnostics);
-  addItem(bmw_diagnostics_btn);
+  // BMW Vitals Display (Coolant, Oil, Battery with individual colors)
+  bmw_vitals_widget = new QWidget(this);
+  QHBoxLayout *vitals_layout = new QHBoxLayout(bmw_vitals_widget);
+  vitals_layout->setMargin(0);
+  vitals_layout->setSpacing(10);
+
+  // Title label
+  QLabel *vitals_title = new QLabel(tr("BMW Vitals"), bmw_vitals_widget);
+  vitals_title->setStyleSheet("font-size: 50px; font-weight: 400;");
+  vitals_layout->addWidget(vitals_title, 1);
+
+  // Create three separate value labels for individual coloring
+  coolant_lbl = new QLabel("--", bmw_vitals_widget);
+  coolant_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
+  coolant_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  vitals_layout->addWidget(coolant_lbl);
+
+  QLabel *separator1 = new QLabel(" | ", bmw_vitals_widget);
+  separator1->setStyleSheet("font-size: 40px; color: #666666;");
+  vitals_layout->addWidget(separator1);
+
+  oil_lbl = new QLabel("--", bmw_vitals_widget);
+  oil_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
+  oil_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  vitals_layout->addWidget(oil_lbl);
+
+  QLabel *separator2 = new QLabel(" | ", bmw_vitals_widget);
+  separator2->setStyleSheet("font-size: 40px; color: #666666;");
+  vitals_layout->addWidget(separator2);
+
+  battery_lbl = new QLabel("--", bmw_vitals_widget);
+  battery_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
+  battery_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  vitals_layout->addWidget(battery_lbl);
+
+  bmw_vitals_widget->setFixedHeight(120);
+  addItem(bmw_vitals_widget);
 
   // Personalized longitudinal learning display
   personalized_learning_lbl = new LabelControl(tr("Personalized Following"), tr("Not learning"));
@@ -605,20 +625,6 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   
   // Initial update
   updateVehicleInfo();
-}
-
-void VehiclePanel::openBmwDiagnostics() {
-  // Create and show BMW diagnostics dialog
-  BmwDiagnosticsDialog *dialog = new BmwDiagnosticsDialog(this);
-
-  // Update with current UI state
-  dialog->updateData(*uiState());
-
-  // Show dialog
-  dialog->exec();
-
-  // Clean up
-  delete dialog;
 }
 
 void VehiclePanel::openPersonalizedDetails() {
@@ -1219,58 +1225,53 @@ void VehiclePanel::updateState(const UIState &s) {
   curve_speed_lbl->setVisible(true);  // Always visible
   curve_speed_details_btn->setVisible(show_curve_details_btn);
 
-  // BMW-specific displays (only when BMW detected)
-  if (s.scene.bmw_diagnostics_available) {
-    // Hide UDS-dependent displays (available in uds-dtc branch)
-    coolant_temp_lbl->setVisible(false);
-    oil_temp_lbl->setVisible(false);
-    dtc_status_lbl->setVisible(false);
-    bmw_diagnostics_btn->setVisible(false);
-    
-    // Update Coolant Temperature with color coding
-    int coolant_temp = (int)s.scene.bmw_coolant_temp;
-    QString coolant_color = "white";
-    if (coolant_temp > 95) {
-      coolant_color = "#E22C2C";  // Red for high temp
-    } else if (coolant_temp > 85) {
-      coolant_color = "#DAB825";  // Yellow for warm
-    } else {
-      coolant_color = "#5CB85C";  // Green for normal
-    }
-    coolant_temp_lbl->setText(QString("%1°C").arg(coolant_temp));
-    coolant_temp_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 48px; }").arg(coolant_color));
-    
-    // Update Oil Temperature with color coding
-    int oil_temp = (int)s.scene.bmw_oil_temp;
-    QString oil_color = "white";
-    if (oil_temp > 125) {
-      oil_color = "#E22C2C";  // Red for high temp
-    } else if (oil_temp > 110) {
-      oil_color = "#DAB825";  // Yellow for warm
-    } else {
-      oil_color = "#5CB85C";  // Green for normal
-    }
-    oil_temp_lbl->setText(QString("%1°C").arg(oil_temp));
-    oil_temp_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 48px; }").arg(oil_color));
-    
-    // Update DTC Status
-    int dtc_count = s.scene.bmw_dtc_count;
-    if (dtc_count > 0) {
-      dtc_status_lbl->setText(QString("%1 active code%2").arg(dtc_count).arg(dtc_count > 1 ? "s" : ""));
-      dtc_status_lbl->setStyleSheet("QLabel { color: #E22C2C; font-weight: bold; font-size: 36px; }");  // Red for codes
-    } else {
-      dtc_status_lbl->setText(tr("No codes"));
-      dtc_status_lbl->setStyleSheet("QLabel { color: #5CB85C; font-weight: bold; font-size: 36px; }");  // Green for no codes
-    }
-    
-    // BMW DME handles all engine protection internally
+  // BMW vitals display (always visible)
+  // Show actual values when BMW detected, 0 values for offline development
+  int coolant_temp = s.scene.bmw_diagnostics_available ? (int)s.scene.bmw_coolant_temp : 0;
+  int oil_temp = s.scene.bmw_diagnostics_available ? (int)s.scene.bmw_oil_temp : 0;
+  float battery_voltage = s.scene.bmw_diagnostics_available ? s.scene.bmw_battery_voltage : 0.0;
+
+  // Coolant color coding
+  QString coolant_color;
+  if (coolant_temp > 95) {
+    coolant_color = "#E22C2C";  // Red for high temp
+  } else if (coolant_temp > 85) {
+    coolant_color = "#DAB825";  // Yellow for warm
   } else {
-    // Hide BMW-specific displays when no BMW detected
-    coolant_temp_lbl->setVisible(false);
-    oil_temp_lbl->setVisible(false);
-    dtc_status_lbl->setVisible(false);
-    bmw_diagnostics_btn->setVisible(false);
+    coolant_color = "#5CB85C";  // Green for normal
   }
+
+  // Oil color coding
+  QString oil_color;
+  if (oil_temp > 125) {
+    oil_color = "#E22C2C";  // Red for high temp
+  } else if (oil_temp > 110) {
+    oil_color = "#DAB825";  // Yellow for warm
+  } else {
+    oil_color = "#5CB85C";  // Green for normal
+  }
+
+  // Battery voltage color coding
+  QString battery_color;
+  if (battery_voltage < 11.5) {
+    battery_color = "#E22C2C";  // Red for low voltage
+  } else if (battery_voltage < 12.0) {
+    battery_color = "#DAB825";  // Yellow for marginal
+  } else {
+    battery_color = "#5CB85C";  // Green for normal
+  }
+
+  // Update individual labels with colors
+  coolant_lbl->setText(QString("Coolant: %1°C").arg(coolant_temp));
+  coolant_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(coolant_color));
+
+  oil_lbl->setText(QString("Oil: %1°C").arg(oil_temp));
+  oil_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(oil_color));
+
+  battery_lbl->setText(QString("Battery: %1V").arg(battery_voltage, 0, 'f', 1));
+  battery_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(battery_color));
+
+  bmw_vitals_widget->setVisible(true);  // Always visible
 }
 
 void VehiclePanel::updateVehicleInfo() {

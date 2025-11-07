@@ -108,7 +108,6 @@ public:
   explicit VehiclePanel(SettingsWindow *parent);
 
 private slots:
-  void openBmwDiagnostics();
   void openPersonalizedDetails();
   void openLongitudinalDelayDetails();
   void openLateralDelayDetails();
@@ -117,11 +116,11 @@ private slots:
 
 private:
   Params params;
-  ButtonControl *bmw_diagnostics_btn;
   LabelControl *vehicle_info_lbl;
-  LabelControl *coolant_temp_lbl;
-  LabelControl *oil_temp_lbl;
-  LabelControl *dtc_status_lbl;
+  QWidget *bmw_vitals_widget;
+  QLabel *coolant_lbl;
+  QLabel *oil_lbl;
+  QLabel *battery_lbl;
   LabelControl *personalized_learning_lbl;
   ButtonControl *personalized_details_btn;
   LabelControl *longitudinal_delay_lbl;
