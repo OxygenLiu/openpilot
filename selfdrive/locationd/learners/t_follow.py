@@ -62,7 +62,7 @@ class PersonalizedLongitudinalLearner(LearnerClass):
 
     MIN_VREL = 0.1            # m/s - minimum |vrel| for valid data
     MIN_SEGMENT_DURATION = 5.0  # seconds - minimum continuous valid segment
-    MAX_LEAD_DISTANCE = 200.0   # m - BMW vision ModelV2 detection range (highway conditions)
+    MAX_LEAD_DISTANCE = 100.0   # m - BMW vision-based lead detection range limit
 
     # T_FOLLOW baseline reference
     # BMW E90 tuned value based on 89 manual driving following segments (median 1.82s)
