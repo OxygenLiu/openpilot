@@ -5,7 +5,7 @@ from cereal import log
 from opendbc.car.lateral import FRICTION_THRESHOLD, get_friction
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
-from openpilot.common.pid import PIDController, OptimizedPIDController
+from openpilot.common.pid import PIDController
 
 # At higher speeds (25+mph) we can assume:
 # Lateral acceleration achieved by a specific car correlates to
@@ -28,20 +28,7 @@ class LatControlTorque(LatControl):
     self.torque_params = CP.lateralTuning.torque.as_builder()
     self.torque_from_lateral_accel = CI.torque_from_lateral_accel()
     self.lateral_accel_from_torque = CI.lateral_accel_from_torque()
-    # Use optimized PID controller for BMW, standard for others
-    if hasattr(CP, 'carFingerprint') and 'BMW' in str(CP.carFingerprint):
-      self.pid = OptimizedPIDController(
-        self.torque_params.kp, self.torque_params.ki,
-        k_f=self.torque_params.kf,
-        derivative_filter_tau=0.02,    # 20ms filter for BMW
-        setpoint_weight_p=0.6,         # Smooth setpoint response
-        error_deadband=0.002,          # 0.2% deadband
-        adaptive_integral=True,        # BMW-optimized windup protection
-        bumpless_transfer=True         # Smooth gain changes
-      )
-    else:
-      self.pid = PIDController(self.torque_params.kp, self.torque_params.ki,
-                               k_f=self.torque_params.kf)
+    self.pid = PIDController(self.torque_params.kp, self.torque_params.ki, rate=1/self.dt)
     self.update_limits()
     self.steering_angle_deadzone_deg = self.torque_params.steeringAngleDeadzoneDeg
 
