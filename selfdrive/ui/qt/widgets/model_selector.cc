@@ -157,10 +157,10 @@ QString ModelSelectorDialog::getModelTypeArg() {
 }
 
 QString ModelSelectorDialog::getActiveModel() {
-  // Call model_swapper_v3.py to get active model
+  // Call model_swapper.py to get active model
   QProcess process;
   process.start("python3", QStringList()
-    << "/data/openpilot/selfdrive/modeld/model_swapper_v3.py"
+    << "/data/openpilot/selfdrive/modeld/model_swapper.py"
     << "--type" << getModelTypeArg()
     << "active");
   process.waitForFinished(3000);
@@ -182,10 +182,10 @@ void ModelSelectorDialog::loadModels() {
   active_model_id = getActiveModel();
   active_model_label->setText(active_model_id);
 
-  // Call model_swapper_v3.py list command
+  // Call model_swapper.py list command
   QProcess process;
   process.start("python3", QStringList()
-    << "/data/openpilot/selfdrive/modeld/model_swapper_v3.py"
+    << "/data/openpilot/selfdrive/modeld/model_swapper.py"
     << "--type" << getModelTypeArg()
     << "list");
   process.waitForFinished(5000);
@@ -385,7 +385,7 @@ void ModelSelectorDialog::swapModel() {
   status_label->setText("Swapping model... Please wait.");
   status_label->setStyleSheet("QLabel { color: #4A90E2; padding: 5px; }");
 
-  // Call model_swapper_v2.py swap command
+  // Call model_swapper.py swap command
   if (swap_process) {
     delete swap_process;
   }
@@ -397,7 +397,7 @@ void ModelSelectorDialog::swapModel() {
           &ModelSelectorDialog::onSwapFinished);
 
   swap_process->start("python3", QStringList()
-    << "/data/openpilot/selfdrive/modeld/model_swapper_v3.py"
+    << "/data/openpilot/selfdrive/modeld/model_swapper.py"
     << "--type" << getModelTypeArg()
     << "swap"
     << selected_model_id);

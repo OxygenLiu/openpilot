@@ -223,8 +223,8 @@ def download_model(model_type: ModelType, model_id: str, output_dir: Path = None
 
     print()
     print("Next steps:")
-    print(f"  1. Verify: python selfdrive/modeld/model_swapper_v3.py --type {model_type.value} verify {model_id}")
-    print(f"  2. Swap: python selfdrive/modeld/model_swapper_v3.py --type {model_type.value} swap {model_id}")
+    print(f"  1. Verify: python selfdrive/modeld/model_swapper.py --type {model_type.value} verify {model_id}")
+    print(f"  2. Swap: python selfdrive/modeld/model_swapper.py --type {model_type.value} swap {model_id}")
     print("=" * 70)
 
     return 0 if not failed_files else 1
