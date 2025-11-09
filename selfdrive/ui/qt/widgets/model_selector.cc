@@ -193,7 +193,7 @@ void ModelSelectorDialog::loadModels() {
   QString output = process.readAllStandardOutput();
 
   // Parse output (line-based format)
-  QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+  QStringList lines = output.split('\n', QString::SkipEmptyParts);
 
   ModelInfo current_model;
   bool in_model = false;

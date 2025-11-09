@@ -1113,7 +1113,7 @@ void VehiclePanel::openDrivingModelSelector() {
     process.waitForFinished(5000);
 
     QString output = process.readAllStandardOutput();
-    QStringList models = output.split('\n', Qt::SkipEmptyParts);
+    QStringList models = output.split('\n', QString::SkipEmptyParts);
 
     if (models.isEmpty()) {
       return;
@@ -1203,7 +1203,7 @@ void VehiclePanel::openDMModelSelector() {
     process.waitForFinished(5000);
 
     QString output = process.readAllStandardOutput();
-    QStringList models = output.split('\n', Qt::SkipEmptyParts);
+    QStringList models = output.split('\n', QString::SkipEmptyParts);
 
     if (models.isEmpty()) {
       return;
@@ -1498,7 +1498,7 @@ void VehiclePanel::updateVehicleInfo() {
       driving_list.start("python3", QStringList() << script_path << "--type" << "driving" << "list-with-dates");
       if (driving_list.waitForFinished(3000)) {
         QString output = driving_list.readAllStandardOutput();
-        QStringList models = output.split('\n', Qt::SkipEmptyParts);
+        QStringList models = output.split('\n', QString::SkipEmptyParts);
         QString model_with_date = active_name;  // Fallback
         for (const QString &model : models) {
           QString model_name = QString(model).remove(date_pattern);
@@ -1523,7 +1523,7 @@ void VehiclePanel::updateVehicleInfo() {
       dm_list.start("python3", QStringList() << script_path << "--type" << "dm" << "list-with-dates");
       if (dm_list.waitForFinished(3000)) {
         QString output = dm_list.readAllStandardOutput();
-        QStringList models = output.split('\n', Qt::SkipEmptyParts);
+        QStringList models = output.split('\n', QString::SkipEmptyParts);
         QString model_with_date = active_name;  // Fallback
         for (const QString &model : models) {
           QString model_name = QString(model).remove(date_pattern);
