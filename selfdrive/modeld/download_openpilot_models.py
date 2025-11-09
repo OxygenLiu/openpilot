@@ -51,13 +51,63 @@ DM_MODELS = {
 
 
 def download_file(url: str, dest: Path, desc: str = None):
-    """Download file from URL with progress"""
+    """Download file from URL with progress, handling Git LFS"""
     print(f"  📥 Downloading {desc or dest.name}...")
 
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
-    total_size = int(response.headers.get('content-length', 0))
+    # Check if this is a Git LFS pointer file
+    content_type = response.headers.get('content-type', '')
+    content_length = int(response.headers.get('content-length', 0))
+
+    # Small text files are likely LFS pointers
+    if content_length < 200 and 'text/plain' in content_type:
+        # Read the potential LFS pointer
+        lfs_pointer = response.content.decode('utf-8')
+
+        if lfs_pointer.startswith('version https://git-lfs.github.com'):
+            # Parse LFS pointer
+            lines = lfs_pointer.strip().split('\n')
+            lfs_oid = None
+            lfs_size = None
+
+            for line in lines:
+                if line.startswith('oid sha256:'):
+                    lfs_oid = line.split(':', 1)[1].strip()
+                elif line.startswith('size '):
+                    lfs_size = int(line.split(' ', 1)[1].strip())
+
+            if lfs_oid:
+                print(f"    🔄 Detected Git LFS file (actual size: {lfs_size / 1024 / 1024:.1f}MB)")
+
+                # Download from LFS endpoint
+                lfs_url = f"https://github.com/commaai/openpilot.git/info/lfs/objects/batch"
+                lfs_request = {
+                    "operation": "download",
+                    "transfers": ["basic"],
+                    "objects": [{"oid": lfs_oid, "size": lfs_size}]
+                }
+
+                lfs_response = requests.post(
+                    lfs_url,
+                    json=lfs_request,
+                    headers={
+                        'Accept': 'application/vnd.git-lfs+json',
+                        'Content-Type': 'application/vnd.git-lfs+json'
+                    }
+                )
+                lfs_response.raise_for_status()
+
+                lfs_data = lfs_response.json()
+                download_url = lfs_data['objects'][0]['actions']['download']['href']
+
+                # Download actual file
+                response = requests.get(download_url, stream=True)
+                response.raise_for_status()
+                content_length = lfs_size
+
+    total_size = content_length
 
     with open(dest, 'wb') as f:
         if total_size == 0:
