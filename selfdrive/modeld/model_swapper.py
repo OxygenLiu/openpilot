@@ -190,6 +190,37 @@ class ModelSwapper:
             dst.symlink_to(src)
             symlinked_pkl.append(filename)
 
+        # Verify all symlinks were created correctly
+        verification_errors = []
+        for filename in self.onnx_files:
+            dst = self.ACTIVE_DIR / filename
+            expected_target = source_dir / filename
+
+            if not dst.is_symlink():
+                verification_errors.append(f"{filename}: not a symlink")
+            elif dst.resolve() != expected_target.resolve():
+                verification_errors.append(
+                    f"{filename}: points to {dst.resolve()} instead of {expected_target}"
+                )
+            elif not dst.exists():
+                verification_errors.append(f"{filename}: broken symlink (target doesn't exist)")
+
+        for filename in symlinked_pkl:
+            dst = self.ACTIVE_DIR / filename
+            expected_target = source_dir / filename
+
+            if not dst.is_symlink():
+                verification_errors.append(f"{filename}: not a symlink")
+            elif dst.resolve() != expected_target.resolve():
+                verification_errors.append(
+                    f"{filename}: points to {dst.resolve()} instead of {expected_target}"
+                )
+
+        if verification_errors:
+            raise RuntimeError(
+                f"Symlink verification failed:\n" + "\n".join(f"  - {e}" for e in verification_errors)
+            )
+
         # Update active model tracker
         with open(self.active_model_file, 'w') as f:
             f.write(model_id)
