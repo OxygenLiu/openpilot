@@ -1149,7 +1149,7 @@ void VehiclePanel::openDrivingModelSelector() {
     // Ask what to do with selected model
     QStringList actions;
     if (selection != current_with_date) {
-      actions << tr("Select") << tr("Delete") << tr("Cancel");
+      actions << tr("Activate") << tr("Delete") << tr("Cancel");
     } else {
       // Can't select or delete active model
       actions << tr("Delete") << tr("Cancel");
@@ -1159,7 +1159,7 @@ void VehiclePanel::openDrivingModelSelector() {
       tr("What would you like to do with") + "\n" + selection + "?",
       actions, "", this);
 
-    if (action == tr("Select")) {
+    if (action == tr("Activate")) {
       // Swap to selected model (use name without date)
       QProcess swap_process;
       swap_process.start("python3", QStringList() << script_path << "--type" << "driving" << "swap" << model_name);
@@ -1239,7 +1239,7 @@ void VehiclePanel::openDMModelSelector() {
     // Ask what to do with selected model
     QStringList actions;
     if (selection != current_with_date) {
-      actions << tr("Select") << tr("Delete") << tr("Cancel");
+      actions << tr("Activate") << tr("Delete") << tr("Cancel");
     } else {
       // Can't select or delete active model
       actions << tr("Delete") << tr("Cancel");
@@ -1249,7 +1249,7 @@ void VehiclePanel::openDMModelSelector() {
       tr("What would you like to do with") + "\n" + selection + "?",
       actions, "", this);
 
-    if (action == tr("Select")) {
+    if (action == tr("Activate")) {
       // Swap to selected model (use name without date)
       QProcess swap_process;
       swap_process.start("python3", QStringList() << script_path << "--type" << "dm" << "swap" << model_name);
