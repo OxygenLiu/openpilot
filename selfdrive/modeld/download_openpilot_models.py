@@ -19,8 +19,8 @@ class ModelType(Enum):
     DM = "dm"
 
 
-# Model registry location
-REGISTRY_FILE = Path(__file__).parent / 'model_registry.json'
+# Model registry location (persists across reboots on C3)
+REGISTRY_FILE = Path('/data/model_registry/model_registry.json')
 
 
 def load_registry():
