@@ -8,6 +8,7 @@ Handles two separate model types:
 import argparse
 import json
 import requests
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from enum import Enum
@@ -36,87 +37,68 @@ def load_registry():
 
 
 def download_file(url: str, dest: Path, desc: str = None):
-    """Download file from URL with progress, handling Git LFS"""
+    """Download file from URL using Git LFS for ONNX files
+
+    Uses git lfs smudge for robust LFS downloads that work with all GitHub models.
+    This method supports all LFS transfer adapters (basic, lfs-standalone-file, ssh),
+    unlike the batch API which only works for some models.
+    """
     print(f"  📥 Downloading {desc or dest.name}...")
 
-    response = requests.get(url, stream=True)
+    # Download the file (may be LFS pointer or regular file)
+    response = requests.get(url)
     response.raise_for_status()
+    content = response.content
 
     # Check if this is a Git LFS pointer file
-    content_type = response.headers.get('content-type', '')
-    content_length = int(response.headers.get('content-length', 0))
+    if len(content) < 200:
+        try:
+            lfs_pointer = content.decode('utf-8')
+            if lfs_pointer.startswith('version https://git-lfs.github.com'):
+                # Parse LFS metadata for display
+                lfs_size = None
+                for line in lfs_pointer.strip().split('\n'):
+                    if line.startswith('size '):
+                        lfs_size = int(line.split(' ', 1)[1].strip())
+                        break
 
-    # Small text files are likely LFS pointers
-    if content_length < 200 and 'text/plain' in content_type:
-        # Read the potential LFS pointer
-        lfs_pointer = response.content.decode('utf-8')
+                if lfs_size:
+                    print(f"    🔄 Detected Git LFS file (actual size: {lfs_size / 1024 / 1024:.1f}MB)")
+                    print(f"    📦 Using git lfs smudge for download...")
 
-        if lfs_pointer.startswith('version https://git-lfs.github.com'):
-            # Parse LFS pointer
-            lines = lfs_pointer.strip().split('\n')
-            lfs_oid = None
-            lfs_size = None
+                # Use git lfs smudge to download the actual file
+                # This works for ALL models (uses multiple transfer adapters with fallback)
+                try:
+                    result = subprocess.run(
+                        ['git', 'lfs', 'smudge'],
+                        input=content,
+                        capture_output=True,
+                        check=True,
+                        timeout=300  # 5 minute timeout
+                    )
+                    content = result.stdout
 
-            for line in lines:
-                if line.startswith('oid sha256:'):
-                    lfs_oid = line.split(':', 1)[1].strip()
-                elif line.startswith('size '):
-                    lfs_size = int(line.split(' ', 1)[1].strip())
+                    # Verify we got the actual file, not the pointer
+                    if len(content) < 200 or content.startswith(b'version https://git-lfs.github.com'):
+                        raise Exception("git lfs smudge returned pointer instead of file")
 
-            if lfs_oid:
-                print(f"    🔄 Detected Git LFS file (actual size: {lfs_size / 1024 / 1024:.1f}MB)")
+                    print(f"    ✅ Downloaded via Git LFS ({len(content) / 1024 / 1024:.1f}MB)")
 
-                # Download from LFS endpoint
-                lfs_url = f"https://github.com/commaai/openpilot.git/info/lfs/objects/batch"
-                lfs_request = {
-                    "operation": "download",
-                    "transfers": ["basic"],
-                    "objects": [{"oid": lfs_oid, "size": lfs_size}]
-                }
+                except subprocess.CalledProcessError as e:
+                    error_msg = e.stderr.decode('utf-8') if e.stderr else str(e)
+                    raise Exception(f"git lfs smudge failed: {error_msg}")
+                except FileNotFoundError:
+                    raise Exception("git lfs command not found - please install Git LFS")
+        except UnicodeDecodeError:
+            # Not a text file, continue with binary download
+            pass
 
-                lfs_response = requests.post(
-                    lfs_url,
-                    json=lfs_request,
-                    headers={
-                        'Accept': 'application/vnd.git-lfs+json',
-                        'Content-Type': 'application/vnd.git-lfs+json'
-                    }
-                )
-                lfs_response.raise_for_status()
-
-                lfs_data = lfs_response.json()
-                lfs_object = lfs_data['objects'][0]
-
-                # Check if LFS object has an error (not available)
-                if 'error' in lfs_object:
-                    raise Exception(f"LFS object not available: {lfs_object['error']['message']}")
-
-                if 'actions' not in lfs_object or 'download' not in lfs_object['actions']:
-                    raise Exception("LFS download action not available")
-
-                download_url = lfs_object['actions']['download']['href']
-
-                # Download actual file
-                response = requests.get(download_url, stream=True)
-                response.raise_for_status()
-                content_length = lfs_size
-
-    total_size = content_length
-
+    # Write the file
     with open(dest, 'wb') as f:
-        if total_size == 0:
-            f.write(response.content)
-        else:
-            downloaded = 0
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-                downloaded += len(chunk)
-                # Simple progress indicator
-                percent = (downloaded / total_size) * 100
-                if downloaded % (1024 * 1024) == 0:  # Every 1MB
-                    print(f"    {percent:.1f}% ({downloaded / 1024 / 1024:.1f}MB / {total_size / 1024 / 1024:.1f}MB)")
+        f.write(content)
 
-    print(f"    ✅ {dest.name} ({dest.stat().st_size / 1024 / 1024:.1f}MB)")
+    file_size_mb = dest.stat().st_size / 1024 / 1024
+    print(f"    ✅ {dest.name} ({file_size_mb:.1f}MB)")
 
 
 def download_model(model_type: ModelType, model_id: str, output_dir: Path = None):
