@@ -131,6 +131,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     excessiveActuation @96;
     audioFeedback @97;
     dccCalibrationMode @98;
+    dccFallbackMode @99;
 
     soundsUnavailableDEPRECATED @47;
   }

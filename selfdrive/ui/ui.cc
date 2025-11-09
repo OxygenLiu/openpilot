@@ -77,6 +77,12 @@ static void update_state(UIState *s) {
   // Note: BMW diagnostic data (temperatures, DTC) available in uds-dtc branch
   // This branch only implements personalized longitudinal learning
 
+  // Update battery voltage from peripheralState (C3 hardware sensor, not CAN)
+  if (sm.updated("peripheralState")) {
+    auto ps = sm["peripheralState"].getPeripheralState();
+    scene.bmw_battery_voltage = ps.getVoltage() / 1000.0;  // Convert mV to V
+  }
+
   // Update personalized longitudinal learning data from liveDelay (BMW only)
   if (scene.bmw_diagnostics_available && sm.updated("liveDelay")) {
     auto ld = sm["liveDelay"].getLiveDelay();
@@ -168,6 +174,7 @@ UIState::UIState(QObject *parent) : QObject(parent) {
     "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState",
     "pandaStates", "carParams", "driverMonitoringState", "carState", "driverStateV2",
     "wideRoadCameraState", "managerState", "selfdriveState", "longitudinalPlan", "liveDelay",
+    "peripheralState",
   });
   prime_state = new PrimeState(this);
   language = QString::fromStdString(Params().get("LanguageSetting"));

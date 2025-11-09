@@ -1016,6 +1016,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.audioFeedback: {
     ET.PERMANENT: audio_feedback_alert,
   },
+
+  EventName.dccFallbackMode: {
+    ET.PERMANENT: NormalPermanentAlert("DCC Fallback Mode",
+                                       "Using Threshold Control"),
+  },
 }
 
 
