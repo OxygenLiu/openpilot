@@ -1,0 +1,227 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-11-09",
+  "description": "Openpilot model registry for downloadable models from GitHub",
+  "driving_models": {
+    "cool_people_3c957c6": {
+      "name": "The Cool People's Model \ud83d\ude0e",
+      "commit": "3c957c6e9d8f05138b8a80523d50db5b5ca2cb73",
+      "date": "2025-10-20",
+      "description": "Latest driving model with improved vision and policy",
+      "pr": "#36249",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "north_nevada_4d08542": {
+      "name": "North Nevada \ud83c\udfd4\ufe0f",
+      "commit": "4d085424f80009ee5ea4ae8f4519ed871905b382",
+      "date": "2025-10-09",
+      "description": "World Model removed global localization inputs, 2x parameters, trained on 4x segments",
+      "pr": "#36276",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "nevada_3ca9f35": {
+      "name": "Nevada Model \ud83c\udf35",
+      "commit": "3ca9f351a047f5a7fa93bc8a5d50d42301beca31",
+      "date": "2025-09-12",
+      "description": "Nevada model with improved performance",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ],
+      "pr": "#36114"
+    },
+    "firehose_model_f0f04d4": {
+      "name": "Firehose model",
+      "commit": "f0f04d4b5b752be1e0b12bac33dbca830bcf6815",
+      "date": "2025-09-05",
+      "description": "Model from 2025-09-05",
+      "pr": "(#36087)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "modeld_desiredesire_pulse_f8ff156": {
+      "name": "modeld: desire->desire_pulse",
+      "commit": "f8ff156869f4abc64c595dc2a442071df4c8543d",
+      "date": "2025-08-27",
+      "description": "Model from 2025-08-27",
+      "pr": "(#36076)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "steam_powered_model_ceb5570": {
+      "name": "Steam Powered model",
+      "commit": "ceb557058c5a7e7fd4de8c2dc5608e32c8773eac",
+      "date": "2025-08-17",
+      "description": "Model from 2025-08-17",
+      "pr": "(#36000)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "down_to_ride_model__8deb1bf": {
+      "name": "Down To Ride model \ud83c\udfce\ufe0f",
+      "commit": "8deb1bf285b5e7053dfe35c0ef7bc4a492fda364",
+      "date": "2025-08-13",
+      "description": "Model from 2025-08-13",
+      "pr": "(#35982)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "space_lab_3__c78b302": {
+      "name": "Space Lab 3 \ud83d\udef0\ufe0f\ud83d\udef0\ufe0f\ud83d\udef0\ufe0f",
+      "commit": "c78b302b93dde0508ec2bc7eda2d02de344109c4",
+      "date": "2025-08-11",
+      "description": "Model from 2025-08-11",
+      "pr": "(#35905)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "space_lab_2_5c252de": {
+      "name": "Space Lab 2",
+      "commit": "5c252ded72d79041690bd6b4cf444c96451f0d90",
+      "date": "2025-07-27",
+      "description": "Model from 2025-07-27",
+      "pr": "(#35816)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "space_lab_model__938981d": {
+      "name": "Space Lab Model \ud83d\udef0\ufe0f",
+      "commit": "938981dce9a84e0b4bcf77691c6faced199d4405",
+      "date": "2025-07-25",
+      "description": "Model from 2025-07-25",
+      "pr": "(#35804)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "letr14h_cbba571": {
+      "name": "LeTR14h",
+      "commit": "cbba571845f921fd79eed43ac97e71867ce24492",
+      "date": "2025-07-18",
+      "description": "Model from 2025-07-18",
+      "pr": "(#35746)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "letr14__aac09d1": {
+      "name": "LeTR14 \ud83c\uddeb\ud83c\uddf7",
+      "commit": "aac09d1d92c68457683d7914bf02d20c90df5984",
+      "date": "2025-07-17",
+      "description": "Model from 2025-07-17",
+      "pr": "(#35730)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "revert_tr15_052ada6": {
+      "name": "Revert \"TR15",
+      "commit": "052ada6a076ef751030fabb290b60a5d0d8601bf",
+      "date": "2025-07-14",
+      "description": "Model from 2025-07-14",
+      "pr": "(#35673)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "tr15_0aaefde": {
+      "name": "TR15",
+      "commit": "0aaefdee37e8c3d1d26b678be05bd73bfc9905c5",
+      "date": "2025-07-14",
+      "description": "Model from 2025-07-14",
+      "pr": "(#35673)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "tomb_raider_14_64fd3f9": {
+      "name": "Tomb Raider 14",
+      "commit": "64fd3f986081ba6cb488d02e799845367add29e2",
+      "date": "2025-07-03",
+      "description": "Model from 2025-07-03",
+      "pr": "(#35620)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "vegetarian_filet_o_fish_model__01b3f70": {
+      "name": "Vegetarian Filet o Fish model \ud83d\udc1f",
+      "commit": "01b3f70c0175e32b59318b47f2cba1a643165510",
+      "date": "2025-06-25",
+      "description": "Model from 2025-06-25",
+      "pr": "(#35379)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "liquid_crystal_model__c1e0b87": {
+      "name": "liquid crystal model \ud83d\udca7\u2744\ufe0f",
+      "commit": "c1e0b870592d739e140a4bb69eea901aa013acd4",
+      "date": "2025-06-23",
+      "description": "Model from 2025-06-23",
+      "pr": "(#35591)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    },
+    "kerrygold_model__ccd55d3": {
+      "name": "kerrygold model \ud83e\uddc8",
+      "commit": "ccd55d3663c1fbcb0dadd6103e60b7344e8b24a0",
+      "date": "2025-06-18",
+      "description": "Model from 2025-06-18",
+      "pr": "(#35499)",
+      "files": [
+        "driving_vision.onnx",
+        "driving_policy.onnx"
+      ]
+    }
+  },
+  "dm_models": {
+    "medium_fanta_cc8f6ea": {
+      "name": "Medium Fanta \ud83e\udd64",
+      "commit": "cc8f6eadfe0e80ab23b5c281779dc5df7868a319",
+      "date": "2025-10-21",
+      "description": "Medium Fanta driver monitoring model",
+      "pr": "#36409",
+      "files": [
+        "dmonitoring_model.onnx"
+      ]
+    },
+    "large_donut_d24a14c": {
+      "name": "Large Donut \ud83c\udf69",
+      "commit": "d24a14cb39d0d8b443fcf9f10c51e1a22e660af0",
+      "date": "2025-10-01",
+      "description": "Large Donut model with improved driver monitoring",
+      "pr": "#36198",
+      "files": [
+        "dmonitoring_model.onnx"
+      ]
+    }
+  }
+}

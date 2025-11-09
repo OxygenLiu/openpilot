@@ -19,35 +19,20 @@ class ModelType(Enum):
     DM = "dm"
 
 
-# Model registry with real openpilot master branch models
-# Separated by type: driving models vs driver monitoring models
+# Model registry location
+REGISTRY_FILE = Path(__file__).parent / 'model_registry.json'
 
-DRIVING_MODELS = {
-    'north_nevada_4d08542': {
-        'name': 'North Nevada 🏔️',
-        'commit': '4d085424f80009ee5ea4ae8f4519ed871905b382',
-        'date': '2025-10-09',
-        'description': 'World Model removed global localization inputs, 2x parameters, trained on 4x segments',
-        'pr': '#36276',
-        'files': [
-            'driving_vision.onnx',
-            'driving_policy.onnx',
-        ]
-    },
-}
 
-DM_MODELS = {
-    'large_donut_d24a14c': {
-        'name': 'Large Donut 🍩',
-        'commit': 'd24a14cb39d0d8b443fcf9f10c51e1a22e660af0',
-        'date': '2025-10-01',
-        'description': 'Large Donut model with improved driver monitoring',
-        'pr': '#36198',
-        'files': [
-            'dmonitoring_model.onnx',
-        ]
-    },
-}
+def load_registry():
+    """Load model registry from JSON file"""
+    if not REGISTRY_FILE.exists():
+        print(f"⚠️  Model registry not found: {REGISTRY_FILE}")
+        return {}, {}
+
+    with open(REGISTRY_FILE) as f:
+        registry = json.load(f)
+
+    return registry.get('driving_models', {}), registry.get('dm_models', {})
 
 
 def download_file(url: str, dest: Path, desc: str = None):
@@ -128,13 +113,16 @@ def download_file(url: str, dest: Path, desc: str = None):
 def download_model(model_type: ModelType, model_id: str, output_dir: Path = None):
     """Download a model from openpilot master at specific commit"""
 
+    # Load registry
+    driving_models, dm_models = load_registry()
+
     # Select registry based on type
     if model_type == ModelType.DRIVING:
-        registry = DRIVING_MODELS
+        registry = driving_models
         type_name = "Driving Model"
         default_dir_name = "models"
     else:
-        registry = DM_MODELS
+        registry = dm_models
         type_name = "Driver Monitoring Model"
         default_dir_name = "dm-models"
 
@@ -232,6 +220,9 @@ def download_model(model_type: ModelType, model_id: str, output_dir: Path = None
 
 def list_available(model_type: ModelType = None):
     """List all available models in registry"""
+    # Load registry
+    driving_models, dm_models = load_registry()
+
     print("=" * 70)
     print("Available Models for Download")
     print("=" * 70)
@@ -241,7 +232,7 @@ def list_available(model_type: ModelType = None):
         print("[DRIVING MODELS]")
         print("For lateral/longitudinal control (driving_vision.onnx + driving_policy.onnx)")
         print()
-        for model_id, info in DRIVING_MODELS.items():
+        for model_id, info in driving_models.items():
             print(f"📦 {model_id}")
             print(f"   Name: {info['name']}")
             print(f"   Commit: {info['commit']}")
@@ -255,7 +246,7 @@ def list_available(model_type: ModelType = None):
         print("[DRIVER MONITORING MODELS]")
         print("For driver attention detection (dmonitoring_model.onnx)")
         print()
-        for model_id, info in DM_MODELS.items():
+        for model_id, info in dm_models.items():
             print(f"📦 {model_id}")
             print(f"   Name: {info['name']}")
             print(f"   Commit: {info['commit']}")
@@ -271,6 +262,9 @@ def check_updates():
 
     Returns JSON with new models available for download
     """
+    # Load registry
+    driving_models, dm_models = load_registry()
+
     # Determine base directory
     base_data_dir = Path('/data') if Path('/data').exists() else Path.home() / 'driving_data'
 
@@ -290,7 +284,7 @@ def check_updates():
 
     # Find new models
     new_driving = []
-    for model_id, info in DRIVING_MODELS.items():
+    for model_id, info in driving_models.items():
         if model_id not in installed_driving:
             new_driving.append({
                 'id': model_id,
@@ -299,7 +293,7 @@ def check_updates():
             })
 
     new_dm = []
-    for model_id, info in DM_MODELS.items():
+    for model_id, info in dm_models.items():
         if model_id not in installed_dm:
             new_dm.append({
                 'id': model_id,
@@ -318,18 +312,183 @@ def check_updates():
     return 0
 
 
+def add_model_to_registry(model_type: str, model_id: str, name: str, commit: str,
+                          date: str, description: str, pr: str = None):
+    """Add a new model to the registry"""
+
+    # Load existing registry
+    with open(REGISTRY_FILE) as f:
+        registry = json.load(f)
+
+    # Determine model type key and files
+    if model_type == 'driving':
+        registry_key = 'driving_models'
+        files = ['driving_vision.onnx', 'driving_policy.onnx']
+    else:
+        registry_key = 'dm_models'
+        files = ['dmonitoring_model.onnx']
+
+    # Create model entry
+    model_entry = {
+        'name': name,
+        'commit': commit,
+        'date': date,
+        'description': description,
+        'files': files
+    }
+
+    if pr:
+        model_entry['pr'] = pr
+
+    # Add to registry
+    registry[registry_key][model_id] = model_entry
+    registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+    # Save registry
+    with open(REGISTRY_FILE, 'w') as f:
+        json.dump(registry, f, indent=2)
+
+    print(f"✅ Added {model_type} model '{model_id}' to registry")
+    print(f"   Name: {name}")
+    print(f"   Commit: {commit}")
+    print(f"   Date: {date}")
+    if pr:
+        print(f"   PR: {pr}")
+    print()
+    print(f"Registry updated: {REGISTRY_FILE}")
+
+    return 0
+
+
+def update_registry_from_github():
+    """Fetch latest model commits from GitHub and update registry"""
+
+    print("🔍 Checking GitHub for new openpilot models...")
+
+    # Fetch commits from GitHub API
+    github_api_url = "https://api.github.com/repos/commaai/openpilot/commits"
+    params = {
+        'path': 'selfdrive/modeld/models',
+        'per_page': 20  # Check last 20 commits
+    }
+
+    try:
+        response = requests.get(github_api_url, params=params)
+        response.raise_for_status()
+        commits_data = response.json()
+    except Exception as e:
+        print(f"❌ Failed to fetch commits from GitHub: {e}")
+        return 1
+
+    # Load existing registry
+    with open(REGISTRY_FILE) as f:
+        registry = json.load(f)
+
+    existing_commits = set()
+    for models_dict in [registry['driving_models'], registry['dm_models']]:
+        for model_info in models_dict.values():
+            existing_commits.add(model_info['commit'])
+
+    new_models_added = 0
+
+    # Parse commits for model updates
+    for commit_data in commits_data:
+        commit_hash = commit_data['sha']
+        commit_hash_short = commit_hash[:7]
+        commit_message = commit_data['commit']['message']
+        commit_date = commit_data['commit']['committer']['date'][:10]  # YYYY-MM-DD
+
+        # Skip if already in registry
+        if commit_hash in existing_commits:
+            continue
+
+        # Parse commit message for model info
+        # Expected format: "Model Name 🎯 (#12345)"
+        if '(#' not in commit_message:
+            continue
+
+        # Extract PR number
+        pr_match = commit_message.find('(#')
+        if pr_match == -1:
+            continue
+
+        pr_end = commit_message.find(')', pr_match)
+        pr_number = commit_message[pr_match:pr_end+1]
+        model_name = commit_message[:pr_match].strip()
+
+        # Determine model type
+        if 'DM:' in model_name or 'dmonitoring' in commit_message.lower():
+            model_type = 'dm'
+            model_name = model_name.replace('DM:', '').strip()
+            registry_key = 'dm_models'
+            files = ['dmonitoring_model.onnx']
+        else:
+            model_type = 'driving'
+            registry_key = 'driving_models'
+            files = ['driving_vision.onnx', 'driving_policy.onnx']
+
+        # Generate model ID - clean up name and append commit hash
+        import re
+        clean_name = model_name.lower().replace(' ', '_')
+        clean_name = re.sub(r'[^a-z0-9_]', '', clean_name)
+        model_id = f"{clean_name}_{commit_hash_short}"
+
+        # Create model entry
+        model_entry = {
+            'name': model_name,
+            'commit': commit_hash,
+            'date': commit_date,
+            'description': f'Model from {commit_date}',
+            'pr': pr_number,
+            'files': files
+        }
+
+        # Add to registry
+        registry[registry_key][model_id] = model_entry
+        new_models_added += 1
+
+        print(f"✅ Found new {model_type} model: {model_name}")
+        print(f"   ID: {model_id}")
+        print(f"   Commit: {commit_hash_short}")
+        print(f"   Date: {commit_date}")
+        print(f"   PR: {pr_number}")
+        print()
+
+    if new_models_added > 0:
+        # Update last_updated timestamp
+        registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
+
+        # Save updated registry
+        with open(REGISTRY_FILE, 'w') as f:
+            json.dump(registry, f, indent=2)
+
+        print(f"✅ Added {new_models_added} new model(s) to registry")
+        print(f"📄 Registry updated: {REGISTRY_FILE}")
+    else:
+        print("✅ Registry is up to date - no new models found")
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Download openpilot models from GitHub (separated driving/DM models)'
     )
-    parser.add_argument('action', choices=['list', 'download', 'check-updates'],
+    parser.add_argument('action', choices=['list', 'download', 'check-updates', 'add-model', 'update-registry'],
                        help='Action to perform')
     parser.add_argument('--type', choices=['driving', 'dm'],
                        help='Model type: driving or dm (driver monitoring)')
     parser.add_argument('model_id', nargs='?',
-                       help='Model ID to download')
+                       help='Model ID to download or add')
     parser.add_argument('--output', '-o', type=Path,
                        help='Output directory (default: /data/models/ or /data/dm-models/)')
+
+    # Arguments for add-model command
+    parser.add_argument('--name', help='Model display name (for add-model)')
+    parser.add_argument('--commit', help='Full GitHub commit hash (for add-model)')
+    parser.add_argument('--date', help='Release date YYYY-MM-DD (for add-model)')
+    parser.add_argument('--description', help='Model description (for add-model)')
+    parser.add_argument('--pr', help='PR number like #36249 (for add-model)')
 
     args = parser.parse_args()
 
@@ -350,13 +509,33 @@ def main():
             print("❌ --type required for download (driving or dm)")
             print()
             print("Examples:")
-            print("  python download_openpilot_models_v2.py download --type driving cool_people_3c957c6")
-            print("  python download_openpilot_models_v2.py download --type dm medium_fanta_cc8f6ea")
+            print("  python download_openpilot_models.py download --type driving cool_people_3c957c6")
+            print("  python download_openpilot_models.py download --type dm medium_fanta_cc8f6ea")
             return 1
 
         model_type = ModelType.DRIVING if args.type == 'driving' else ModelType.DM
 
         return download_model(model_type, args.model_id, args.output)
+
+    elif args.action == 'add-model':
+        if not all([args.model_id, args.type, args.name, args.commit, args.date, args.description]):
+            print("❌ add-model requires: model_id, --type, --name, --commit, --date, --description")
+            print()
+            print("Example:")
+            print("  python download_openpilot_models.py add-model cool_people_3c957c6 \\")
+            print("    --type driving \\")
+            print("    --name \"The Cool People's Model 😎\" \\")
+            print("    --commit 3c957c6e9d8f05138b8a80523d50db5b5ca2cb73 \\")
+            print("    --date 2025-10-20 \\")
+            print("    --description \"Latest driving model with improved vision\" \\")
+            print("    --pr \"#36249\"")
+            return 1
+
+        return add_model_to_registry(args.type, args.model_id, args.name, args.commit,
+                                    args.date, args.description, args.pr)
+
+    elif args.action == 'update-registry':
+        return update_registry_from_github()
 
 
 if __name__ == '__main__':

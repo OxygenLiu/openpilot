@@ -178,6 +178,11 @@ QString ModelSelectorDialog::getActiveModel() {
 void ModelSelectorDialog::loadModels() {
   models.clear();
 
+  // Update model registry from GitHub (background, don't wait)
+  QProcess::startDetached("python3", QStringList()
+    << "/data/openpilot/selfdrive/modeld/download_openpilot_models.py"
+    << "update-registry");
+
   // Get active model
   active_model_id = getActiveModel();
   active_model_label->setText(active_model_id);
