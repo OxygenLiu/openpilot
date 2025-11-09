@@ -73,6 +73,7 @@ cppcheck_report.txt
 comma*.sh
 
 selfdrive/modeld/models/*.pkl
+selfdrive/modeld/model_registry.json
 
 *.bz2
 *.zst
