@@ -85,7 +85,16 @@ def download_file(url: str, dest: Path, desc: str = None):
                 lfs_response.raise_for_status()
 
                 lfs_data = lfs_response.json()
-                download_url = lfs_data['objects'][0]['actions']['download']['href']
+                lfs_object = lfs_data['objects'][0]
+
+                # Check if LFS object has an error (not available)
+                if 'error' in lfs_object:
+                    raise Exception(f"LFS object not available: {lfs_object['error']['message']}")
+
+                if 'actions' not in lfs_object or 'download' not in lfs_object['actions']:
+                    raise Exception("LFS download action not available")
+
+                download_url = lfs_object['actions']['download']['href']
 
                 # Download actual file
                 response = requests.get(download_url, stream=True)
