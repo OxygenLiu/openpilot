@@ -105,12 +105,8 @@ class ModelState:
     self.temporal_idxs = slice(-1-(ModelConstants.TEMPORAL_SKIP*(ModelConstants.INPUT_HISTORY_BUFFER_LEN-1)), None, ModelConstants.TEMPORAL_SKIP)
 
     # policy inputs
-    # Provide both 'desire' and 'desire_pulse' for backward/forward compatibility
-    # Old models (before Aug 2025) use 'desire', new models use 'desire_pulse'
-    desire_buffer = np.zeros((1, ModelConstants.INPUT_HISTORY_BUFFER_LEN, ModelConstants.DESIRE_LEN), dtype=np.float32)
     self.numpy_inputs = {
-      'desire': desire_buffer,
-      'desire_pulse': desire_buffer,  # Same buffer, both names point to same data
+      'desire': np.zeros((1, ModelConstants.INPUT_HISTORY_BUFFER_LEN, ModelConstants.DESIRE_LEN), dtype=np.float32),
       'traffic_convention': np.zeros((1, ModelConstants.TRAFFIC_CONVENTION_LEN), dtype=np.float32),
       'features_buffer': np.zeros((1, ModelConstants.INPUT_HISTORY_BUFFER_LEN,  ModelConstants.FEATURE_LEN), dtype=np.float32),
     }
@@ -316,10 +312,8 @@ def main(demo=False):
 
     bufs = {name: buf_extra if 'big' in name else buf_main for name in model.vision_input_names}
     transforms = {name: model_transform_extra if 'big' in name else model_transform_main for name in model.vision_input_names}
-    # Provide both 'desire' and 'desire_pulse' for backward/forward compatibility
     inputs:dict[str, np.ndarray] = {
       'desire': vec_desire,
-      'desire_pulse': vec_desire,  # Same data for both old and new models
       'traffic_convention': traffic_convention,
     }
 
