@@ -101,6 +101,47 @@ def download_file(url: str, dest: Path, desc: str = None):
     print(f"    ✅ {dest.name} ({file_size_mb:.1f}MB)")
 
 
+def check_model_compatibility(model_info: dict, model_type: ModelType) -> tuple[bool, str]:
+    """Check if model is compatible with current openpilot version
+
+    Returns:
+        (is_compatible, warning_message)
+    """
+    # Only check driving models (DM models don't use desire_pulse)
+    if model_type != ModelType.DRIVING:
+        return True, ""
+
+    # Parse model date
+    try:
+        from datetime import datetime
+        model_date = datetime.strptime(model_info['date'], '%Y-%m-%d')
+        # desire_pulse transition date: August 27, 2025
+        transition_date = datetime(2025, 8, 27)
+
+        if model_date < transition_date:
+            warning = (
+                f"\n⚠️  COMPATIBILITY WARNING ⚠️\n"
+                f"This model was released BEFORE the desire_pulse transition (Aug 27, 2025).\n"
+                f"Model date: {model_info['date']}\n"
+                f"\n"
+                f"Your current openpilot code uses 'desire_pulse' (commit 88e7c48bf).\n"
+                f"This model expects 'desire' and will NOT work with your code.\n"
+                f"\n"
+                f"Compatible models (released after Aug 27, 2025):\n"
+                f"  - modeld_desiredesire_pulse_f8ff156\n"
+                f"  - firehose_model_f0f04d4\n"
+                f"  - nevada_3ca9f35\n"
+                f"  - north_nevada_4d08542\n"
+                f"  - cool_people_3c957c6 (recommended)\n"
+            )
+            return False, warning
+    except (ValueError, KeyError):
+        # If date parsing fails, assume compatible (benefit of doubt)
+        pass
+
+    return True, ""
+
+
 def download_model(model_type: ModelType, model_id: str, output_dir: Path = None):
     """Download a model from openpilot master at specific commit"""
 
@@ -125,6 +166,17 @@ def download_model(model_type: ModelType, model_id: str, output_dir: Path = None
         return 1
 
     model_info = registry[model_id]
+
+    # Check compatibility
+    is_compatible, warning = check_model_compatibility(model_info, model_type)
+    if not is_compatible:
+        print(warning)
+        print("=" * 70)
+        response = input("Download anyway? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            print("❌ Download cancelled")
+            return 1
+        print()
 
     # Determine output directory
     if output_dir is None:
@@ -224,7 +276,12 @@ def list_available(model_type: ModelType = None):
         print("For lateral/longitudinal control (driving_vision.onnx + driving_policy.onnx)")
         print()
         for model_id, info in driving_models.items():
-            print(f"📦 {model_id}")
+            # Check compatibility
+            is_compatible, _ = check_model_compatibility(info, ModelType.DRIVING)
+            compat_icon = "✅" if is_compatible else "⚠️"
+            compat_text = "Compatible" if is_compatible else "INCOMPATIBLE (pre-desire_pulse)"
+
+            print(f"📦 {model_id}  {compat_icon} {compat_text}")
             print(f"   Name: {info['name']}")
             print(f"   Commit: {info['commit']}")
             print(f"   Date: {info['date']}")
