@@ -143,14 +143,33 @@ class ModelSwapper:
 
     def swap_model(self, model_id: str) -> dict:
         """
-        Swap active model using ONNX + optional PKL caching
+        Swap active model immediately (git-safe architecture)
+
+        Process:
+        1. Cache current model's compiled PKL files to /data storage
+        2. Validate new model's ONNX files exist in /data
+        3. Copy new model's ONNX and PKL (if available) to selfdrive/modeld/models/
+        4. Update .active_* tracker file
+
+        After reboot, if PKL files are missing, openpilot auto-compiles ONNX→PKL.
+        Next swap will cache those compiled PKL files.
 
         Returns:
             dict with swap status and whether compilation is needed
         """
-        # Resolve name to ID if needed
-        model_id = self.resolve_model_id(model_id)
+        # STEP 1: Cache compiled PKL files from CURRENT model (if any)
+        current_model_id = self.get_active_model()
+        cached_count = 0
 
+        if current_model_id and current_model_id != 'unknown':
+            try:
+                cached_count = self.cache_compiled_pkl(current_model_id)
+            except Exception as e:
+                # Don't fail swap if caching fails, just log it
+                pass
+
+        # STEP 2: Validate NEW model ONNX files exist in /data storage
+        model_id = self.resolve_model_id(model_id)
         source_dir = self.models_dir / model_id
 
         if not source_dir.exists():
@@ -167,74 +186,56 @@ class ModelSwapper:
                 f"Model '{model_id}' is missing required ONNX files: {', '.join(missing_onnx)}"
             )
 
-        # Check which PKL files are available (for caching)
+        # Check which PKL files are available
         available_pkl = [f for f in self.pkl_files if (source_dir / f).exists()]
 
-        # Backup current model
-        self._backup_current_model()
+        # STEP 3: Copy ONNX and PKL files to selfdrive/modeld/models/
+        copied_files = []
 
-        # Remove existing symlinks for this model type only
-        self._remove_symlinks()
-
-        # Create ONNX symlinks (always required)
+        # Copy ONNX files (always required)
         for filename in self.onnx_files:
             src = source_dir / filename
             dst = self.ACTIVE_DIR / filename
-            dst.symlink_to(src)
 
-        # Create PKL symlinks if cached (skip compilation)
-        symlinked_pkl = []
+            # Remove old file/symlink if exists
+            if dst.exists() or dst.is_symlink():
+                dst.unlink()
+
+            # Copy the file
+            shutil.copy2(src, dst)
+            copied_files.append(filename)
+
+        # Copy PKL files if available (otherwise openpilot will compile at boot)
         for filename in available_pkl:
             src = source_dir / filename
             dst = self.ACTIVE_DIR / filename
-            dst.symlink_to(src)
-            symlinked_pkl.append(filename)
 
-        # Verify all symlinks were created correctly
-        verification_errors = []
-        for filename in self.onnx_files:
-            dst = self.ACTIVE_DIR / filename
-            expected_target = source_dir / filename
+            # Remove old file/symlink if exists
+            if dst.exists() or dst.is_symlink():
+                dst.unlink()
 
-            if not dst.is_symlink():
-                verification_errors.append(f"{filename}: not a symlink")
-            elif dst.resolve() != expected_target.resolve():
-                verification_errors.append(
-                    f"{filename}: points to {dst.resolve()} instead of {expected_target}"
-                )
-            elif not dst.exists():
-                verification_errors.append(f"{filename}: broken symlink (target doesn't exist)")
+            # Copy the file
+            shutil.copy2(src, dst)
+            copied_files.append(filename)
 
-        for filename in symlinked_pkl:
-            dst = self.ACTIVE_DIR / filename
-            expected_target = source_dir / filename
-
-            if not dst.is_symlink():
-                verification_errors.append(f"{filename}: not a symlink")
-            elif dst.resolve() != expected_target.resolve():
-                verification_errors.append(
-                    f"{filename}: points to {dst.resolve()} instead of {expected_target}"
-                )
-
-        if verification_errors:
-            raise RuntimeError(
-                f"Symlink verification failed:\n" + "\n".join(f"  - {e}" for e in verification_errors)
-            )
-
-        # Update active model tracker
+        # STEP 4: Update active model tracker
         with open(self.active_model_file, 'w') as f:
             f.write(model_id)
 
-        needs_compilation = len(symlinked_pkl) < len(self.pkl_files)
+        needs_compilation = len(available_pkl) < len(self.pkl_files)
 
         return {
             'model_id': model_id,
             'model_type': self.model_type.value,
+            'copied_files': copied_files,
             'onnx_files': len(self.onnx_files),
-            'cached_pkl_files': len(symlinked_pkl),
+            'cached_pkl_files': len(available_pkl),
             'total_pkl_files': len(self.pkl_files),
             'needs_compilation': needs_compilation,
-            'compilation_note': 'openpilot will compile ONNX→PKL on next boot' if needs_compilation else 'using cached PKL files'
+            'compilation_note': 'openpilot will compile ONNX→PKL on first boot' if needs_compilation else 'using cached PKL files',
+            'requires_reboot': True,
+            'reboot_note': 'Reboot required to activate new model',
+            'previous_model_cached': cached_count
         }
 
     def _remove_symlinks(self):
