@@ -91,6 +91,13 @@ static void update_state(UIState *s) {
     scene.bmw_battery_voltage = voltage;
   }
 
+  // Update BMW vitals from CarState (coolant temp, oil temp)
+  if (scene.bmw_diagnostics_available && sm.updated("carState")) {
+    auto cs = sm["carState"].getCarState();
+    scene.bmw_coolant_temp = cs.getCoolantTemp();
+    scene.bmw_oil_temp = cs.getOilTemp();
+  }
+
   // Update personalized longitudinal learning data from liveDelay (BMW only)
   if (scene.bmw_diagnostics_available && sm.updated("liveDelay")) {
     auto ld = sm["liveDelay"].getLiveDelay();
