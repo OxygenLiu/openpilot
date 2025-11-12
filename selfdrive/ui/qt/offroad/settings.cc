@@ -1437,14 +1437,14 @@ void VehiclePanel::updateState(const UIState &s) {
   int oil_temp = s.scene.bmw_diagnostics_available ? (int)s.scene.bmw_oil_temp : 0;
   float battery_voltage = s.scene.bmw_diagnostics_available ? s.scene.bmw_battery_voltage : 0.0;
 
-  // Coolant color coding
+  // Coolant color coding: < 90°C: Green (cool), 90-105°C: Yellow (warm), > 105°C: Red (extremely hot)
   QString coolant_color;
-  if (coolant_temp > 95) {
-    coolant_color = "#E22C2C";  // Red for high temp
-  } else if (coolant_temp > 85) {
+  if (coolant_temp > 105) {
+    coolant_color = "#E22C2C";  // Red for extremely hot
+  } else if (coolant_temp >= 90) {
     coolant_color = "#DAB825";  // Yellow for warm
   } else {
-    coolant_color = "#5CB85C";  // Green for normal
+    coolant_color = "#5CB85C";  // Green for cool
   }
 
   // Oil color coding

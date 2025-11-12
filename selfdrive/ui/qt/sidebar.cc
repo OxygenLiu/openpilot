@@ -120,13 +120,16 @@ void Sidebar::updateState(const UIState &s) {
     // BMW diagnostic mode - show temperature status (DME handles protection)
     QString status_text;
     QColor status_color = good_color;
-    
-    if (s.scene.bmw_coolant_temp > 95 || s.scene.bmw_oil_temp > 125) {
-      status_text = QString::number((int)s.scene.bmw_coolant_temp) + "°C";
-      status_color = warning_color;
+
+    // Coolant temperature color coding:
+    // < 90°C: Green (cool), 90-105°C: Yellow (warm), > 105°C: Red (extremely hot)
+    status_text = QString::number((int)s.scene.bmw_coolant_temp) + "°C";
+    if (s.scene.bmw_coolant_temp > 105 || s.scene.bmw_oil_temp > 125) {
+      status_color = danger_color;  // Red for extremely hot
+    } else if (s.scene.bmw_coolant_temp >= 90) {
+      status_color = warning_color;  // Yellow for warm
     } else {
-      status_text = QString::number((int)s.scene.bmw_coolant_temp) + "°C";
-      status_color = good_color;
+      status_color = good_color;  // Green for cool
     }
     
     pandaStatus = {{tr("BMW"), status_text}, status_color};
