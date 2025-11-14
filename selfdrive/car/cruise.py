@@ -114,9 +114,9 @@ class VCruiseHelper:
 
     self.v_cruise_kph = np.clip(round(self.v_cruise_kph, 1), V_CRUISE_MIN, V_CRUISE_MAX)
 
-    # Save user's adjusted speed for next engagement (separate storage for each mode)
-    mode_key = "ExperimentalModeSpeed" if experimental_mode else "NormalModeSpeed"
-    self.params.put(mode_key, int(self.v_cruise_kph))
+    # Save to last known speed (in-memory, not persistent storage)
+    # This will be restored on next RESUME/ACCEL engagement
+    self.v_cruise_kph_last = self.v_cruise_kph
 
   def update_button_timers(self, CS, enabled):
     # increment timer for buttons still pressed
@@ -135,38 +135,28 @@ class VCruiseHelper:
     if self.CP.pcmCruise:
       return
 
-    initial = V_CRUISE_INITIAL_EXPERIMENTAL_MODE if experimental_mode else V_CRUISE_INITIAL
-
-    # Check if RESUME button was pressed
-    resume_pressed = any(b.type == ButtonType.resumeCruise for b in CS.buttonEvents)
-
-    if resume_pressed:
-      # RESUME button: restore saved speed from persistent storage
-      mode_key = "ExperimentalModeSpeed" if experimental_mode else "NormalModeSpeed"
-      try:
-        saved_speed = self.params.get(mode_key)
-        if saved_speed is not None:
-          # INT params return int directly (not bytes)
-          restored_speed = saved_speed if isinstance(saved_speed, int) else int(saved_speed.decode('utf-8'))
-          # Use restored speed if it's within valid range, otherwise fallback to initial
-          if V_CRUISE_MIN <= restored_speed <= V_CRUISE_MAX:
-            self.v_cruise_kph = restored_speed
-          else:
-            self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
-        else:
-          # No saved speed available, use initial speed
-          self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
-      except (ValueError, AttributeError):
-        # If saved speed is invalid, use initial speed
-        self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
+    # If RESUME/ACCEL pressed and we have a previous cruise speed, restore it
+    # Otherwise, set cruise to current vEgo with max limit at user's last preference (or default if first time)
+    if any(b.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for b in CS.buttonEvents) and self.v_cruise_initialized:
+      # RESUME/ACCEL: Restore user's last selected max cruise speed
+      self.v_cruise_kph = self.v_cruise_kph_last
     else:
-      # SET/ACCEL button or any other engagement: use default initial speed
-      # Note: When cruise already enabled, resumeCruise becomes gapAdjustCruise (handled in carstate.py)
-      self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
+      # SET button (first engagement): Set cruise to vEgo, capped at user's last max (or default)
+      # Use v_cruise_kph_last as the maximum if available, otherwise use default
+      if self.v_cruise_kph_last > V_CRUISE_MIN:
+        # User has previously adjusted max speed - use that as ceiling
+        max_cruise = self.v_cruise_kph_last
+      else:
+        # First time or never adjusted - use default max
+        max_cruise = V_CRUISE_INITIAL_EXPERIMENTAL_MODE if experimental_mode else V_CRUISE_INITIAL
+
+      # Set cruise speed to current vEgo, but cap at max_cruise
+      self.v_cruise_kph = int(round(min(CS.vEgo * CV.MS_TO_KPH, max_cruise)))
+
+      # Ensure within valid range
+      self.v_cruise_kph = np.clip(self.v_cruise_kph, V_CRUISE_MIN, V_CRUISE_MAX)
+
+      # Save as last known preference
+      self.v_cruise_kph_last = self.v_cruise_kph
 
     self.v_cruise_cluster_kph = self.v_cruise_kph
-
-    # Save the initialized speed to persistent storage for future RESUME button presses
-    # This ensures RESUME can restore the speed even if user never adjusted it with +/-
-    mode_key = "ExperimentalModeSpeed" if experimental_mode else "NormalModeSpeed"
-    self.params.put(mode_key, int(self.v_cruise_kph))
