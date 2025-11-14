@@ -135,28 +135,11 @@ class VCruiseHelper:
     if self.CP.pcmCruise:
       return
 
-    # If RESUME/ACCEL pressed and we have a previous cruise speed, restore it
-    # Otherwise, set cruise to current vEgo with max limit at user's last preference (or default if first time)
+    initial = V_CRUISE_INITIAL_EXPERIMENTAL_MODE if experimental_mode else V_CRUISE_INITIAL
+
     if any(b.type in (ButtonType.accelCruise, ButtonType.resumeCruise) for b in CS.buttonEvents) and self.v_cruise_initialized:
-      # RESUME/ACCEL: Restore user's last selected max cruise speed
       self.v_cruise_kph = self.v_cruise_kph_last
     else:
-      # SET button (first engagement): Set cruise to vEgo, capped at user's last max (or default)
-      # Use v_cruise_kph_last as the maximum if available, otherwise use default
-      if self.v_cruise_kph_last > V_CRUISE_MIN:
-        # User has previously adjusted max speed - use that as ceiling
-        max_cruise = self.v_cruise_kph_last
-      else:
-        # First time or never adjusted - use default max
-        max_cruise = V_CRUISE_INITIAL_EXPERIMENTAL_MODE if experimental_mode else V_CRUISE_INITIAL
-
-      # Set cruise speed to current vEgo, but cap at max_cruise
-      self.v_cruise_kph = int(round(min(CS.vEgo * CV.MS_TO_KPH, max_cruise)))
-
-      # Ensure within valid range
-      self.v_cruise_kph = np.clip(self.v_cruise_kph, V_CRUISE_MIN, V_CRUISE_MAX)
-
-      # Save as last known preference
-      self.v_cruise_kph_last = self.v_cruise_kph
+      self.v_cruise_kph = int(round(np.clip(CS.vEgo * CV.MS_TO_KPH, initial, V_CRUISE_MAX)))
 
     self.v_cruise_cluster_kph = self.v_cruise_kph
