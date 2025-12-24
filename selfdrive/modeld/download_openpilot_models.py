@@ -408,6 +408,59 @@ def add_model_to_registry(model_type: str, model_id: str, name: str, commit: str
     return 0
 
 
+def add_model_from_pr(pr_number: int, model_type: str = 'driving'):
+    """Add a model to registry by extracting info from GitHub PR
+
+    Args:
+        pr_number: GitHub PR number (e.g., 36849)
+        model_type: 'driving' or 'dm'
+    """
+    import re
+
+    print(f"🔍 Fetching PR #{pr_number} from GitHub...")
+
+    api_url = f"https://api.github.com/repos/commaai/openpilot/pulls/{pr_number}"
+    try:
+        response = requests.get(api_url)
+        response.raise_for_status()
+        pr = response.json()
+    except Exception as e:
+        print(f"❌ Failed to fetch PR: {e}")
+        return 1
+
+    # Extract info
+    title = pr['title']
+    merge_commit = pr.get('merge_commit_sha')
+    merged_at = pr.get('merged_at')
+
+    if not merge_commit:
+        print(f"❌ PR #{pr_number} has not been merged yet")
+        return 1
+
+    merged_date = merged_at[:10] if merged_at else datetime.now().strftime('%Y-%m-%d')
+
+    # Generate model_id
+    clean_name = title.lower().replace(' ', '_').replace('-', '_')
+    clean_name = re.sub(r'[^a-z0-9_]', '', clean_name)
+    model_id = f"{clean_name}_{merge_commit[:7]}"
+
+    print(f"✅ Found: {title}")
+    print(f"   Commit: {merge_commit[:12]}")
+    print(f"   Merged: {merged_date}")
+    print()
+
+    # Add to registry
+    return add_model_to_registry(
+        model_type=model_type,
+        model_id=model_id,
+        name=title,
+        commit=merge_commit,
+        date=merged_date,
+        description=f"Driving model from PR #{pr_number}",
+        pr=f"#{pr_number}"
+    )
+
+
 def update_registry_from_github():
     """Fetch latest model commits from GitHub and update registry"""
 
@@ -522,12 +575,12 @@ def main():
     parser = argparse.ArgumentParser(
         description='Download openpilot models from GitHub (separated driving/DM models)'
     )
-    parser.add_argument('action', choices=['list', 'download', 'check-updates', 'add-model', 'update-registry'],
+    parser.add_argument('action', choices=['list', 'download', 'check-updates', 'add-model', 'add-from-pr', 'update-registry'],
                        help='Action to perform')
     parser.add_argument('--type', choices=['driving', 'dm'],
                        help='Model type: driving or dm (driver monitoring)')
     parser.add_argument('model_id', nargs='?',
-                       help='Model ID to download or add')
+                       help='Model ID to download/add, or PR number for add-from-pr')
     parser.add_argument('--output', '-o', type=Path,
                        help='Output directory (default: /data/models/ or /data/dm-models/)')
 
@@ -581,6 +634,36 @@ def main():
 
         return add_model_to_registry(args.type, args.model_id, args.name, args.commit,
                                     args.date, args.description, args.pr)
+
+    elif args.action == 'add-from-pr':
+        if not args.model_id:
+            print("❌ PR number required for add-from-pr")
+            print()
+            print("Example:")
+            print("  python download_openpilot_models.py add-from-pr 36849")
+            print("  python download_openpilot_models.py add-from-pr 36849 --type dm")
+            return 1
+
+        # Extract PR number (handle URLs or plain numbers)
+        pr_input = args.model_id
+        if 'github.com' in pr_input:
+            # Extract from URL like https://github.com/commaai/openpilot/pull/36849
+            import re
+            match = re.search(r'/pull/(\d+)', pr_input)
+            if match:
+                pr_number = int(match.group(1))
+            else:
+                print(f"❌ Could not extract PR number from URL: {pr_input}")
+                return 1
+        else:
+            try:
+                pr_number = int(pr_input.replace('#', ''))
+            except ValueError:
+                print(f"❌ Invalid PR number: {pr_input}")
+                return 1
+
+        model_type = args.type or 'driving'
+        return add_model_from_pr(pr_number, model_type)
 
     elif args.action == 'update-registry':
         return update_registry_from_github()
