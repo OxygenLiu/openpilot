@@ -48,67 +48,6 @@ def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
   return [a_target[0], min(a_target[1], a_x_allowed)]
 
 
-def calculate_curve_speed_limit(model_v2, v_ego, CP):
-  """
-  Calculate safe speed limit for upcoming curves based on ModelV2 path prediction.
-  Uses yaw trajectory to compute curvature and derives safe speed from lateral acceleration limit.
-
-  Args:
-    model_v2: ModelV2 message with path prediction
-    v_ego: Current vehicle speed (m/s)
-    CP: CarParams with BMW curve speed parameters
-
-  Returns:
-    float: Safe speed limit for upcoming curves (m/s), or 999.0 if no curve detected
-  """
-  # Import BMW curve speed parameters from CarParams
-  try:
-    from opendbc.car.bmw.values import CurveSpeedParams
-    lookahead_time = CurveSpeedParams.LOOKAHEAD_TIME
-    lat_accel_limit = CurveSpeedParams.LAT_ACCEL_LIMIT
-    speed_margin = CurveSpeedParams.SPEED_MARGIN
-    min_curvature = CurveSpeedParams.MIN_CURVATURE_THRESHOLD
-    min_speed_buffer = CurveSpeedParams.MIN_SPEED_BUFFER * CV.KPH_TO_MS
-  except (ImportError, AttributeError):
-    # Fallback to generic values if BMW parameters not available
-    return 999.0
-
-  # Extract ModelV2 yaw trajectory
-  if len(model_v2.orientation.z) < 10 or len(model_v2.orientationRate.z) < 10:
-    return 999.0  # Insufficient model data
-
-  yaws = np.array(model_v2.orientation.z)
-  yaw_rates = np.array(model_v2.orientationRate.z)
-  t_idxs = ModelConstants.T_IDXS
-
-  # Calculate curvature at multiple time points in look-ahead window
-  max_curvature = 0.0
-  from openpilot.selfdrive.controls.lib.drive_helpers import get_curvature_from_plan
-
-  for t in np.arange(0.2, lookahead_time, 0.2):  # Start from 0.2s, sample every 0.2s
-    try:
-      curv = get_curvature_from_plan(yaws, yaw_rates, t_idxs, max(v_ego, 1.0), t)
-      max_curvature = max(max_curvature, abs(curv))
-    except:
-      continue
-
-  # If no significant curvature detected, no speed limit
-  if max_curvature < min_curvature:
-    return 999.0
-
-  # Calculate safe speed: v = sqrt(a_lat_max / κ)
-  v_safe = math.sqrt(lat_accel_limit / max_curvature)
-
-  # Apply safety margin
-  v_safe = v_safe * speed_margin
-
-  # Ensure we don't go below minEnableSpeed + buffer
-  min_speed = CP.minEnableSpeed + min_speed_buffer / CV.MS_TO_KPH
-  v_safe = max(v_safe, min_speed)
-
-  return v_safe
-
-
 class LongitudinalPlanner:
   def __init__(self, CP, init_v=0.0, init_a=0.0, dt=DT_MDL):
     self.CP = CP
@@ -122,7 +61,6 @@ class LongitudinalPlanner:
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
-    self.output_v_target = init_v
     self.output_a_target = 0.0
     self.output_should_stop = False
 
@@ -164,10 +102,6 @@ class LongitudinalPlanner:
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
 
-    # Apply predictive curve speed limit (BMW-specific, falls back to no limit for other cars)
-    v_curve_limit = calculate_curve_speed_limit(sm['modelV2'], v_ego, self.CP)
-    v_cruise = min(v_cruise, v_curve_limit)
-
     long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
     force_slow_decel = sm['controlsState'].forceDecel
 
@@ -205,12 +139,9 @@ class LongitudinalPlanner:
     if force_slow_decel:
       v_cruise = 0.0
 
-    # Get T_FOLLOW scale from carState (calculated based on velocity difference for BMW)
-    scale = sm['carState'].longitudinalPersonalitySpeedScale if hasattr(sm['carState'], 'longitudinalPersonalitySpeedScale') else 1.0
-
     self.mpc.set_weights(prev_accel_constraint, personality=sm['selfdriveState'].personality)
     self.mpc.set_cur_state(self.v_desired_filter.x, self.a_desired)
-    self.mpc.update(sm['radarState'], v_cruise, x, v, a, j, personality=sm['selfdriveState'].personality, scale=scale)
+    self.mpc.update(sm['radarState'], v_cruise, x, v, a, j, personality=sm['selfdriveState'].personality)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
@@ -227,18 +158,16 @@ class LongitudinalPlanner:
     self.v_desired_filter.x = self.v_desired_filter.x + self.dt * (self.a_desired + a_prev) / 2.0
 
     action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
-    output_v_target_mpc, output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
+    output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
                                                                         action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
     if mode == 'acc':
       output_a_target = output_a_target_mpc
-      self.output_v_target = output_v_target_mpc  # Delay-compensated velocity target
       self.output_should_stop = output_should_stop_mpc
     else:
       output_a_target = min(output_a_target_mpc, output_a_target_e2e)
-      self.output_v_target = output_v_target_mpc  # Use MPC velocity (e2e doesn't provide delay-compensated v)
       self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
 
     for idx in range(2):
@@ -264,7 +193,6 @@ class LongitudinalPlanner:
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
-    longitudinalPlan.vTarget = float(self.output_v_target)  # Delay-compensated velocity target
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True

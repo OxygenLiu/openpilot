@@ -74,9 +74,6 @@ static void update_state(UIState *s) {
     }
   }
 
-  // Note: BMW diagnostic data (temperatures, DTC) available in uds-dtc branch
-  // This branch only implements personalized longitudinal learning
-
   // Update battery voltage from peripheralState (C3 hardware sensor, not CAN)
   if (sm.updated("peripheralState")) {
     auto ps = sm["peripheralState"].getPeripheralState();
@@ -98,38 +95,9 @@ static void update_state(UIState *s) {
     scene.bmw_oil_temp = cs.getOilTemp();
   }
 
-  // Update personalized longitudinal learning data from liveDelay (BMW only)
+  // Update lateral delay learning data from liveDelay (BMW only)
   if (scene.bmw_diagnostics_available && sm.updated("liveDelay")) {
     auto ld = sm["liveDelay"].getLiveDelay();
-
-    // Check if personalized learning data is available
-    if (ld.hasPersonalizedScales()) {
-      auto scales = ld.getPersonalizedScales();
-      size_t num_scales = scales.size() < 5 ? scales.size() : 5;
-      for (size_t i = 0; i < num_scales; i++) {
-        scene.personalized_scales[i] = scales[i];
-      }
-    }
-
-    if (ld.hasPersonalizedValidBlocks()) {
-      auto blocks = ld.getPersonalizedValidBlocks();
-      size_t num_blocks = blocks.size() < 5 ? blocks.size() : 5;
-      for (size_t i = 0; i < num_blocks; i++) {
-        scene.personalized_valid_blocks[i] = blocks[i];
-      }
-    }
-
-    scene.personalized_progress = ld.getPersonalizedProgress();
-    scene.personalized_status = static_cast<uint8_t>(ld.getPersonalizedStatus());
-    scene.personalized_active_interval = ld.getPersonalizedActiveInterval();
-
-    // Populate longitudinal actuator delay data
-    scene.longitudinal_delay = ld.getLongitudinalDelay();
-    scene.longitudinal_delay_estimate = ld.getLongitudinalDelayEstimate();
-    scene.longitudinal_delay_std = ld.getLongitudinalDelayEstimateStd();
-    scene.longitudinal_valid_blocks = ld.getLongitudinalValidBlocks();
-    scene.longitudinal_status = static_cast<uint8_t>(ld.getLongitudinalStatus());
-    scene.longitudinal_cal_perc = ld.getLongitudinalCalPerc();
 
     // Populate lateral actuator delay data
     scene.lateral_delay = ld.getLateralDelay();
@@ -138,15 +106,6 @@ static void update_state(UIState *s) {
     scene.lateral_valid_blocks = ld.getValidBlocks();
     scene.lateral_status = static_cast<uint8_t>(ld.getStatus());
     scene.lateral_cal_perc = ld.getCalPerc();
-
-    // Populate curve speed control learning data
-    scene.curve_speed_lookahead_time = ld.getCurveSpeedLookaheadTime();
-    scene.curve_speed_lat_accel_limit = ld.getCurveSpeedLatAccelLimit();
-    scene.curve_speed_speed_margin = ld.getCurveSpeedSpeedMargin();
-    scene.curve_speed_min_curvature = ld.getCurveSpeedMinCurvatureThreshold();
-    scene.curve_speed_valid_segments = ld.getCurveSpeedValidSegments();
-    scene.curve_speed_progress = ld.getCurveSpeedProgress();
-    scene.curve_speed_status = static_cast<uint8_t>(ld.getCurveSpeedStatus());
   }
 
   scene.recording_audio = Params().getBool("RecordAudio") && scene.started;

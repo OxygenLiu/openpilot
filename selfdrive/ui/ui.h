@@ -68,21 +68,6 @@ typedef struct UIScene {
   float bmw_battery_voltage = 0.0;
   char bmw_car_fingerprint[32] = "";
 
-  // Personalized longitudinal learning data
-  float personalized_scales[5] = {1.0, 1.0, 1.0, 1.0, 1.0};  // Scale factors for VREL_BP intervals
-  uint16_t personalized_valid_blocks[5] = {0, 0, 0, 0, 0};   // Valid blocks per interval
-  uint8_t personalized_progress = 0;                          // Learning progress 0-100%
-  uint8_t personalized_status = 0;                            // 0=unlearned, 1=learning, 2=learned, 3=invalid
-  int8_t personalized_active_interval = -1;                   // Currently learning interval (-1 if none)
-
-  // Longitudinal actuator delay learning data
-  float longitudinal_delay = 0.0;                             // Current longitudinal delay (seconds)
-  float longitudinal_delay_estimate = 0.0;                    // Estimated delay
-  float longitudinal_delay_std = 0.0;                         // Standard deviation
-  int longitudinal_valid_blocks = 0;                          // Valid blocks count
-  uint8_t longitudinal_status = 0;                            // 0=unestimated, 1=estimated, 2=invalid
-  int8_t longitudinal_cal_perc = 0;                           // Calibration percentage
-
   // Lateral actuator delay learning data
   float lateral_delay = 0.0;                                  // Current lateral delay (seconds)
   float lateral_delay_estimate = 0.0;                         // Estimated delay
@@ -90,15 +75,6 @@ typedef struct UIScene {
   int lateral_valid_blocks = 0;                               // Valid blocks count
   uint8_t lateral_status = 0;                                 // 0=unestimated, 1=estimated, 2=invalid
   int8_t lateral_cal_perc = 0;                                // Calibration percentage
-
-  // Curve speed control learning data
-  float curve_speed_lookahead_time = 3.0;                     // Learned lookahead time (seconds)
-  float curve_speed_lat_accel_limit = 2.0;                    // Learned lateral accel limit (m/s²)
-  float curve_speed_speed_margin = 0.85;                      // Learned speed margin (0.0-1.0)
-  float curve_speed_min_curvature = 0.003;                    // Learned min curvature threshold
-  uint16_t curve_speed_valid_segments = 0;                    // Valid curve segments collected
-  uint8_t curve_speed_progress = 0;                           // Learning progress 0-100%
-  uint8_t curve_speed_status = 0;                             // 0=unlearned, 1=learning, 2=learned, 3=invalid
 } UIScene;
 
 class UIState : public QObject {
