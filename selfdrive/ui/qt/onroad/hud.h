@@ -14,6 +14,7 @@ public:
 private:
   void drawSetSpeed(QPainter &p, const QRect &surface_rect);
   void drawCurrentSpeed(QPainter &p, const QRect &surface_rect);
+  void drawBMWVitals(QPainter &p, const QRect &surface_rect);
   void drawText(QPainter &p, int x, int y, const QString &text, int alpha = 255);
 
   float speed = 0;
@@ -23,4 +24,11 @@ private:
   bool is_metric = false;
   bool v_ego_cluster_seen = false;
   int status = STATUS_DISENGAGED;
+
+  // BMW vitals
+  float bmw_coolant_temp = 0.0;
+  float bmw_oil_temp = 0.0;
+  float bmw_battery_voltage = 0.0;
+  bool bmw_diagnostics_available = false;
+  bool is_rhd = false;
 };

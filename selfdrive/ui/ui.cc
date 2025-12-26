@@ -75,17 +75,10 @@ static void update_state(UIState *s) {
   }
 
   // Update battery voltage from peripheralState (C3 hardware sensor, not CAN)
+  // Use direct STM32F4 reading without any offset compensation
   if (sm.updated("peripheralState")) {
     auto ps = sm["peripheralState"].getPeripheralState();
-    float voltage = ps.getVoltage() / 1000.0;  // Convert mV to V
-
-    // BMW: Add 1.4V display offset to compensate for voltage drop from 120 Ohm CAN termination resistor
-    // This offset is only applied to the UI display value, keeping raw peripheralState.voltage unchanged
-    if (scene.bmw_diagnostics_available) {
-      voltage += 1.4;  // Add 1.4V for BMW display
-    }
-
-    scene.bmw_battery_voltage = voltage;
+    scene.bmw_battery_voltage = ps.getVoltage() / 1000.0;  // Convert mV to V
   }
 
   // Update BMW vitals from CarState (coolant temp, oil temp)

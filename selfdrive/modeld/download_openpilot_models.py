@@ -2,8 +2,10 @@
 """
 Download openpilot models from GitHub at specific commits
 Handles two separate model types:
-- Driving Models: driving_vision.onnx + driving_policy.onnx
-- Driver Monitoring (DM) Models: dmonitoring_model.onnx
+- Driving Models: driving_vision.onnx + driving_policy.onnx → /data/models/driving/
+- Driver Monitoring (DM) Models: dmonitoring_model.onnx → /data/models/dm/
+
+Model registry: /data/models/model_registry.json
 """
 import argparse
 import json
@@ -21,7 +23,7 @@ class ModelType(Enum):
 
 
 # Model registry location (persists across reboots on C3)
-REGISTRY_FILE = Path('/data/model_registry/model_registry.json')
+REGISTRY_FILE = Path('/data/models/model_registry.json')
 
 
 def load_registry():
@@ -152,11 +154,11 @@ def download_model(model_type: ModelType, model_id: str, output_dir: Path = None
     if model_type == ModelType.DRIVING:
         registry = driving_models
         type_name = "Driving Model"
-        default_dir_name = "models"
+        default_dir_name = "models/driving"
     else:
         registry = dm_models
         type_name = "Driver Monitoring Model"
-        default_dir_name = "dm-models"
+        default_dir_name = "models/dm"
 
     if model_id not in registry:
         print(f"❌ {type_name} '{model_id}' not found in registry")
@@ -316,8 +318,8 @@ def check_updates():
     # Determine base directory
     base_data_dir = Path('/data') if Path('/data').exists() else Path.home() / 'driving_data'
 
-    driving_models_dir = base_data_dir / 'models'
-    dm_models_dir = base_data_dir / 'dm-models'
+    driving_models_dir = base_data_dir / 'models' / 'driving'
+    dm_models_dir = base_data_dir / 'models' / 'dm'
 
     # Get installed models
     installed_driving = set()

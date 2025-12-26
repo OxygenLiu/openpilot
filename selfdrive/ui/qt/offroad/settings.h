@@ -108,26 +108,18 @@ public:
   explicit VehiclePanel(SettingsWindow *parent);
 
 private slots:
-  void openLateralDelayDetails();
   void openDrivingModelSelector();
   void openDMModelSelector();
-  void checkAndDownloadModels();
-  void updateState(const UIState &s);
+  void updateRegistryOrDownload();
 
 private:
   Params params;
   ButtonControl *driving_model_selector_btn;
   ButtonControl *dm_model_selector_btn;
   ButtonControl *download_models_btn;
-  LabelControl *vehicle_info_lbl;
-  QWidget *bmw_vitals_widget;
-  QLabel *coolant_lbl;
-  QLabel *oil_lbl;
-  QLabel *battery_lbl;
-  LabelControl *lateral_delay_lbl;
-  ButtonControl *lateral_delay_details_btn;
-  void updateVehicleInfo();
-  void checkForModelUpdates();
+  bool models_ready_to_download = false;  // Track if new models are available
+  void updateModelButtonText();
+  void downloadNewModels();
 };
 
 // Forward declaration

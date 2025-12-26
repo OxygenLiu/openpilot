@@ -27,8 +27,8 @@ class ModelSwapper:
     - Active: Symlinks in selfdrive/modeld/models/
 
     Two independent model systems:
-    - Driving models: /data/models/ (vision + policy)
-    - DM models: /data/dm-models/ (dmonitoring)
+    - Driving models: /data/models/driving/ (vision + policy)
+    - DM models: /data/models/dm/ (dmonitoring)
     """
 
     # Base paths
@@ -38,7 +38,7 @@ class ModelSwapper:
     # Model type configurations
     MODEL_CONFIGS = {
         ModelType.DRIVING: {
-            'models_dir': BASE_DATA_DIR / 'models',
+            'models_dir': BASE_DATA_DIR / 'models' / 'driving',
             'onnx_files': [
                 'driving_vision.onnx',
                 'driving_policy.onnx',
@@ -53,7 +53,7 @@ class ModelSwapper:
             'display_name': 'Driving Model'
         },
         ModelType.DM: {
-            'models_dir': BASE_DATA_DIR / 'dm-models',
+            'models_dir': BASE_DATA_DIR / 'models' / 'dm',
             'onnx_files': [
                 'dmonitoring_model.onnx',
             ],

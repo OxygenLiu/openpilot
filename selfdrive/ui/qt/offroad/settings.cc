@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <string>
@@ -480,9 +481,8 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
     {tr("Device"), device},
     {tr("Network"), networking},
     {tr("Toggles"), toggles},
-    {tr("Vehicle"), new VehiclePanel(this)},
+    {tr("Models"), new VehiclePanel(this)},
     {tr("Software"), new SoftwarePanel(this)},
-    {tr("Firehose"), new FirehosePanel(this)},
     {tr("Developer"), new DeveloperPanel(this)},
   };
 
@@ -546,58 +546,6 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
 }
 
 VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
-  // Vehicle information label
-  vehicle_info_lbl = new LabelControl(tr("Vehicle Information"), "");
-  addItem(vehicle_info_lbl);
-
-  // BMW Vitals Display (Coolant, Oil, Battery with individual colors)
-  bmw_vitals_widget = new QWidget(this);
-  QHBoxLayout *vitals_layout = new QHBoxLayout(bmw_vitals_widget);
-  vitals_layout->setMargin(0);
-  vitals_layout->setSpacing(10);
-
-  // Title label
-  QLabel *vitals_title = new QLabel(tr("BMW Vitals"), bmw_vitals_widget);
-  vitals_title->setStyleSheet("font-size: 50px; font-weight: 400;");
-  vitals_layout->addWidget(vitals_title, 1);
-
-  // Create three separate value labels for individual coloring
-  coolant_lbl = new QLabel("--", bmw_vitals_widget);
-  coolant_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
-  coolant_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  vitals_layout->addWidget(coolant_lbl);
-
-  QLabel *separator1 = new QLabel(" | ", bmw_vitals_widget);
-  separator1->setStyleSheet("font-size: 40px; color: #666666;");
-  vitals_layout->addWidget(separator1);
-
-  oil_lbl = new QLabel("--", bmw_vitals_widget);
-  oil_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
-  oil_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  vitals_layout->addWidget(oil_lbl);
-
-  QLabel *separator2 = new QLabel(" | ", bmw_vitals_widget);
-  separator2->setStyleSheet("font-size: 40px; color: #666666;");
-  vitals_layout->addWidget(separator2);
-
-  battery_lbl = new QLabel("--", bmw_vitals_widget);
-  battery_lbl->setStyleSheet("font-size: 40px; color: #aaaaaa;");
-  battery_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  vitals_layout->addWidget(battery_lbl);
-
-  bmw_vitals_widget->setFixedHeight(120);
-  addItem(bmw_vitals_widget);
-
-  // Lateral actuator delay display
-  lateral_delay_lbl = new LabelControl(tr("Lateral Delay"), tr("Not estimated"));
-  addItem(lateral_delay_lbl);
-
-  // Details button for lateral delay (only shown when data is estimated)
-  lateral_delay_details_btn = new ButtonControl(tr("View Delay Details"), tr("View lateral actuator delay estimation"));
-  QObject::connect(lateral_delay_details_btn, &ButtonControl::clicked, this, &VehiclePanel::openLateralDelayDetails);
-  addItem(lateral_delay_details_btn);
-  lateral_delay_details_btn->setVisible(false);  // Initially hidden
-
   // Driving model selector button
   driving_model_selector_btn = new ButtonControl(tr("Driving Model"), tr("SELECT"));
   QObject::connect(driving_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDrivingModelSelector);
@@ -608,131 +556,14 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   QObject::connect(dm_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDMModelSelector);
   addItem(dm_model_selector_btn);
 
-  // Download models button (hidden until updates available)
-  download_models_btn = new ButtonControl(tr("Download Models"), tr("DOWNLOAD"));
-  QObject::connect(download_models_btn, &ButtonControl::clicked, this, &VehiclePanel::checkAndDownloadModels);
+  // Update registry / Download models button
+  download_models_btn = new ButtonControl(tr("Model Updates"), tr("UPDATE"));
+  QObject::connect(download_models_btn, &ButtonControl::clicked, this, &VehiclePanel::updateRegistryOrDownload);
   addItem(download_models_btn);
-  download_models_btn->setVisible(false);  // Hidden by default
+  download_models_btn->setValue(tr("Check GitHub"));  // Default text
 
-  // Set up UI state updates to show/hide BMW-specific controls
-  QObject::connect(uiState(), &UIState::uiUpdate, this, &VehiclePanel::updateState);
-
-  // Initial update
-  updateVehicleInfo();
-
-  // Check for model updates
-  checkForModelUpdates();
-}
-
-void VehiclePanel::openLateralDelayDetails() {
-  const UIState &s = *uiState();
-
-  // Create dialog
-  QDialog *dialog = new QDialog(this);
-  dialog->setWindowTitle(tr("Lateral Actuator Delay"));
-  dialog->setStyleSheet("QDialog { background-color: #292929; }");
-
-  QVBoxLayout *main_layout = new QVBoxLayout(dialog);
-  main_layout->setContentsMargins(50, 50, 50, 50);
-  main_layout->setSpacing(30);
-
-  // Title
-  QLabel *title = new QLabel(tr("Lateral Actuator Delay Estimation"), dialog);
-  title->setStyleSheet("QLabel { font-size: 48px; font-weight: bold; color: white; }");
-  title->setAlignment(Qt::AlignCenter);
-  main_layout->addWidget(title);
-
-  // Status indicator
-  QString status_text;
-  QString status_color;
-  if (s.scene.lateral_status == 1) {  // Estimated
-    status_text = tr("ESTIMATED");
-    status_color = "#5CB85C";  // Green
-  } else if (s.scene.lateral_status == 2) {  // Invalid
-    status_text = tr("INVALID");
-    status_color = "#D9534F";  // Red
-  } else {  // Unestimated
-    status_text = tr("NOT ESTIMATED");
-    status_color = "#999";  // Gray
-  }
-
-  QLabel *status_lbl = new QLabel(status_text, dialog);
-  status_lbl->setStyleSheet(QString("QLabel { font-size: 36px; font-weight: bold; color: %1; }").arg(status_color));
-  status_lbl->setAlignment(Qt::AlignCenter);
-  main_layout->addWidget(status_lbl);
-
-  // Estimated delay value
-  QFrame *delay_frame = new QFrame(dialog);
-  delay_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
-  QVBoxLayout *delay_layout = new QVBoxLayout(delay_frame);
-
-  QLabel *delay_label = new QLabel(tr("Estimated Delay"), dialog);
-  delay_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
-  delay_label->setAlignment(Qt::AlignCenter);
-  delay_layout->addWidget(delay_label);
-
-  QString delay_text = QString("%1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
-  QLabel *delay_value = new QLabel(delay_text, dialog);
-  delay_value->setStyleSheet("QLabel { font-size: 56px; font-weight: bold; color: white; }");
-  delay_value->setAlignment(Qt::AlignCenter);
-  delay_layout->addWidget(delay_value);
-
-  main_layout->addWidget(delay_frame);
-
-  // Standard deviation
-  QFrame *std_frame = new QFrame(dialog);
-  std_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
-  QVBoxLayout *std_layout = new QVBoxLayout(std_frame);
-
-  QLabel *std_label = new QLabel(tr("Standard Deviation"), dialog);
-  std_label->setStyleSheet("QLabel { font-size: 28px; color: #999; }");
-  std_label->setAlignment(Qt::AlignCenter);
-  std_layout->addWidget(std_label);
-
-  QString std_text = QString("± %1 s").arg(s.scene.lateral_delay_std, 0, 'f', 2);
-  QLabel *std_value = new QLabel(std_text, dialog);
-  std_value->setStyleSheet("QLabel { font-size: 42px; font-weight: bold; color: white; }");
-  std_value->setAlignment(Qt::AlignCenter);
-  std_layout->addWidget(std_value);
-
-  main_layout->addWidget(std_frame);
-
-  // Calibration progress
-  QFrame *cal_frame = new QFrame(dialog);
-  cal_frame->setStyleSheet("QFrame { background-color: #1E1E1E; border-radius: 15px; padding: 20px; }");
-  QHBoxLayout *cal_layout = new QHBoxLayout(cal_frame);
-
-  QLabel *cal_label = new QLabel(tr("Calibration:"), dialog);
-  cal_label->setStyleSheet("QLabel { font-size: 32px; color: #999; }");
-  cal_layout->addWidget(cal_label);
-
-  QString cal_text = QString("%1% (%2/%3 blocks)")
-                        .arg(s.scene.lateral_cal_perc)
-                        .arg(s.scene.lateral_valid_blocks)
-                        .arg(10);  // BLOCK_NUM_NEEDED from lagd.py
-  QLabel *cal_value = new QLabel(cal_text, dialog);
-  cal_value->setStyleSheet("QLabel { font-size: 32px; font-weight: bold; color: white; }");
-  cal_layout->addWidget(cal_value);
-  cal_layout->addStretch();
-
-  main_layout->addWidget(cal_frame);
-
-  // Explanation text
-  QLabel *explanation = new QLabel(tr("Lateral actuator delay is the time between commanded steering and actual vehicle response"), dialog);
-  explanation->setStyleSheet("QLabel { font-size: 24px; color: #999; }");
-  explanation->setAlignment(Qt::AlignCenter);
-  explanation->setWordWrap(true);
-  main_layout->addWidget(explanation);
-
-  // Close button
-  QPushButton *close_btn = new QPushButton(tr("Close"), dialog);
-  close_btn->setStyleSheet("QPushButton { font-size: 36px; padding: 20px; background-color: #5CB85C; color: white; border-radius: 10px; }");
-  QObject::connect(close_btn, &QPushButton::clicked, dialog, &QDialog::accept);
-  main_layout->addWidget(close_btn);
-
-  dialog->setMinimumSize(1000, 800);
-  dialog->exec();
-  delete dialog;
+  // Update model button text with active models
+  updateModelButtonText();
 }
 
 void VehiclePanel::openDrivingModelSelector() {
@@ -783,8 +614,8 @@ void VehiclePanel::openDrivingModelSelector() {
     if (selection != current_with_date) {
       actions << tr("Activate") << tr("Delete") << tr("Cancel");
     } else {
-      // Can't select or delete active model
-      actions << tr("Delete") << tr("Cancel");
+      // Can't activate or delete active model - only cancel
+      actions << tr("Cancel");
     }
 
     QString action = MultiOptionDialog::getSelection(
@@ -915,104 +746,7 @@ void VehiclePanel::openDMModelSelector() {
   }
 }
 
-void VehiclePanel::updateState(const UIState &s) {
-  // Update vehicle info title
-  if (strlen(s.scene.bmw_car_fingerprint) > 0) {
-    QString fingerprint = QString::fromUtf8(s.scene.bmw_car_fingerprint);
-    vehicle_info_lbl->setText(QString("%1 Diagnostics").arg(fingerprint));
-  } else {
-    vehicle_info_lbl->setText("Vehicle Diagnostics");
-  }
-
-  // Lateral actuator delay display (always visible)
-  QString lateral_delay_status_text;
-  QString lateral_delay_status_color;
-  bool show_lateral_delay_details_btn = false;
-
-  switch(s.scene.lateral_status) {
-    case 0:  // unestimated / learning
-      lateral_delay_status_text = tr("Learning");
-      lateral_delay_status_color = "#999";  // Grey
-      break;
-    case 1: {  // estimated
-      lateral_delay_status_text = QString("%1 s").arg(s.scene.lateral_delay_estimate, 0, 'f', 2);
-      // Check if learned delay is being used by controlsd (delay == estimate means activated)
-      float lateral_delay_diff = std::abs(s.scene.lateral_delay - s.scene.lateral_delay_estimate);
-      if (lateral_delay_diff < 0.05) {  // Activated (50ms tolerance)
-        lateral_delay_status_color = "#5CB85C";  // Green - learned and activated
-      } else {
-        lateral_delay_status_color = "#DAB825";  // Yellow - learned but not activated
-      }
-      show_lateral_delay_details_btn = true;
-      break;
-    }
-    case 2:  // invalid
-      lateral_delay_status_text = tr("Invalid data");
-      lateral_delay_status_color = "#E22C2C";  // Red
-      break;
-    default:
-      lateral_delay_status_text = tr("Unknown");
-      lateral_delay_status_color = "#999";  // Grey
-  }
-
-  lateral_delay_lbl->setText(lateral_delay_status_text);
-  lateral_delay_lbl->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; font-size: 36px; }").arg(lateral_delay_status_color));
-  lateral_delay_lbl->setVisible(true);  // Always visible
-  lateral_delay_details_btn->setVisible(show_lateral_delay_details_btn);
-
-  // BMW vitals display (always visible)
-  // Show actual values when BMW detected, 0 values for offline development
-  int coolant_temp = s.scene.bmw_diagnostics_available ? (int)s.scene.bmw_coolant_temp : 0;
-  int oil_temp = s.scene.bmw_diagnostics_available ? (int)s.scene.bmw_oil_temp : 0;
-  float battery_voltage = s.scene.bmw_diagnostics_available ? s.scene.bmw_battery_voltage : 0.0;
-
-  // Coolant color coding: < 90°C: Green (cool), 90-105°C: Yellow (warm), > 105°C: Red (extremely hot)
-  QString coolant_color;
-  if (coolant_temp > 105) {
-    coolant_color = "#E22C2C";  // Red for extremely hot
-  } else if (coolant_temp >= 90) {
-    coolant_color = "#DAB825";  // Yellow for warm
-  } else {
-    coolant_color = "#5CB85C";  // Green for cool
-  }
-
-  // Oil color coding
-  QString oil_color;
-  if (oil_temp > 125) {
-    oil_color = "#E22C2C";  // Red for high temp
-  } else if (oil_temp > 110) {
-    oil_color = "#DAB825";  // Yellow for warm
-  } else {
-    oil_color = "#5CB85C";  // Green for normal
-  }
-
-  // Battery voltage color coding
-  QString battery_color;
-  if (battery_voltage < 11.5) {
-    battery_color = "#E22C2C";  // Red for low voltage
-  } else if (battery_voltage < 12.0) {
-    battery_color = "#DAB825";  // Yellow for marginal
-  } else {
-    battery_color = "#5CB85C";  // Green for normal
-  }
-
-  // Update individual labels with colors
-  coolant_lbl->setText(QString("Coolant: %1°C").arg(coolant_temp));
-  coolant_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(coolant_color));
-
-  oil_lbl->setText(QString("Oil: %1°C").arg(oil_temp));
-  oil_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(oil_color));
-
-  battery_lbl->setText(QString("Battery: %1V").arg(battery_voltage, 0, 'f', 1));
-  battery_lbl->setStyleSheet(QString("font-size: 40px; color: %1;").arg(battery_color));
-
-  bmw_vitals_widget->setVisible(true);  // Always visible
-}
-
-void VehiclePanel::updateVehicleInfo() {
-  // Update vehicle information display - will be updated with actual fingerprint in updateState()
-  vehicle_info_lbl->setText(tr("Vehicle Diagnostics"));
-
+void VehiclePanel::updateModelButtonText() {
   const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
   QRegularExpression date_pattern(" \\(\\d{4}-\\d{2}-\\d{2}\\)$");
 
@@ -1067,32 +801,54 @@ void VehiclePanel::updateVehicleInfo() {
   }
 }
 
-void VehiclePanel::checkForModelUpdates() {
-  // Check if new models are available for download
+void VehiclePanel::updateRegistryOrDownload() {
   const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
 
-  QProcess process;
-  process.start("python3", QStringList() << script_path << "check-updates");
-  if (process.waitForFinished(5000)) {
-    QString output = process.readAllStandardOutput();
+  // If models not yet ready, update registry from GitHub first
+  if (!models_ready_to_download) {
+    // Show progress
+    download_models_btn->setValue(tr("Checking..."));
 
-    // Parse JSON output
-    QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
-    if (!doc.isNull() && doc.isObject()) {
-      QJsonObject obj = doc.object();
-      int total = obj["total"].toInt();
+    // Update registry from GitHub
+    QProcess update_process;
+    update_process.start("python3", QStringList() << script_path << "update-registry");
+    if (!update_process.waitForFinished(15000)) {  // 15 second timeout for GitHub API
+      download_models_btn->setValue(tr("Check GitHub"));
+      ConfirmationDialog::alert(tr("Failed to connect to GitHub"), this);
+      return;
+    }
 
-      // Show download button only if new models are available
-      download_models_btn->setVisible(total > 0);
+    // Check if new models were found
+    QProcess check_process;
+    check_process.start("python3", QStringList() << script_path << "check-updates");
+    if (check_process.waitForFinished(5000)) {
+      QString output = check_process.readAllStandardOutput();
+      QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
 
-      if (total > 0) {
-        download_models_btn->setValue(QString("%1 new").arg(total));
+      if (!doc.isNull() && doc.isObject()) {
+        QJsonObject obj = doc.object();
+        int total = obj["total"].toInt();
+
+        if (total > 0) {
+          // Models found - change button to download mode
+          models_ready_to_download = true;
+          download_models_btn->setValue(QString(tr("Download (%1 new)")).arg(total));
+        } else {
+          // No new models
+          models_ready_to_download = false;
+          download_models_btn->setValue(tr("Check GitHub"));
+          ConfirmationDialog::alert(tr("No new models available"), this);
+        }
       }
     }
+    return;
   }
+
+  // Otherwise, models are ready - proceed with download
+  downloadNewModels();
 }
 
-void VehiclePanel::checkAndDownloadModels() {
+void VehiclePanel::downloadNewModels() {
   // Get list of new models
   const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
 
@@ -1121,22 +877,77 @@ void VehiclePanel::checkAndDownloadModels() {
   }
 
   // Build selection list with formatted names
+  // Only show models compatible with v0.10.1 (after Firehose PR #36087)
+  // Exclude already downloaded models and sort by date (newest first)
+  QList<QJsonObject> filtered_models;
+  const int MIN_COMPATIBLE_PR = 36087;  // Firehose model - first v0.10.1 compatible
+
+  // Collect and filter driving models
+  for (const QJsonValue &val : driving_models) {
+    QJsonObject model_obj = val.toObject();
+
+    // Filter 1: only show models after Firehose (PR #36087) for v0.10.1 compatibility
+    int pr_number = model_obj["pr"].toInt();
+    if (pr_number > 0 && pr_number <= MIN_COMPATIBLE_PR) {
+      continue;  // Skip incompatible models
+    }
+
+    // Filter 2: exclude already downloaded models
+    bool is_downloaded = model_obj["downloaded"].toBool();
+    if (is_downloaded) {
+      continue;  // Skip already downloaded models
+    }
+
+    // Filter 3: exclude reverted models
+    bool is_reverted = model_obj["reverted"].toBool();
+    if (is_reverted) {
+      continue;  // Skip reverted models
+    }
+
+    model_obj["emoji"] = "🚗";  // Mark as driving model
+    filtered_models.append(model_obj);
+  }
+
+  // Collect and filter DM models
+  for (const QJsonValue &val : dm_models) {
+    QJsonObject model_obj = val.toObject();
+
+    // Filter 1: only show models after Firehose (PR #36087) for v0.10.1 compatibility
+    int pr_number = model_obj["pr"].toInt();
+    if (pr_number > 0 && pr_number <= MIN_COMPATIBLE_PR) {
+      continue;  // Skip incompatible models
+    }
+
+    // Filter 2: exclude already downloaded models
+    bool is_downloaded = model_obj["downloaded"].toBool();
+    if (is_downloaded) {
+      continue;  // Skip already downloaded models
+    }
+
+    // Filter 3: exclude reverted models
+    bool is_reverted = model_obj["reverted"].toBool();
+    if (is_reverted) {
+      continue;  // Skip reverted models
+    }
+
+    model_obj["emoji"] = "👁️";  // Mark as DM model
+    filtered_models.append(model_obj);
+  }
+
+  // Sort by date in descending order (newest first)
+  std::sort(filtered_models.begin(), filtered_models.end(), [](const QJsonObject &a, const QJsonObject &b) {
+    return a["date"].toString() > b["date"].toString();
+  });
+
+  // Build display list from sorted models
   QStringList model_display_list;
   QMap<QString, QJsonObject> model_map;  // Map display name to model data
 
-  for (const QJsonValue &val : driving_models) {
-    QJsonObject model_obj = val.toObject();
+  for (const QJsonObject &model_obj : filtered_models) {
+    QString emoji = model_obj["emoji"].toString();
     QString name = model_obj["name"].toString();
     QString date = model_obj["date"].toString();
-    QString display = QString("🚗 %1 (%2)").arg(name).arg(date);
-    model_display_list << display;
-    model_map[display] = model_obj;
-  }
-  for (const QJsonValue &val : dm_models) {
-    QJsonObject model_obj = val.toObject();
-    QString name = model_obj["name"].toString();
-    QString date = model_obj["date"].toString();
-    QString display = QString("👁️ %1 (%2)").arg(name).arg(date);
+    QString display = QString("%1 %2 (%3)").arg(emoji).arg(name).arg(date);
     model_display_list << display;
     model_map[display] = model_obj;
   }
@@ -1181,9 +992,9 @@ void VehiclePanel::checkAndDownloadModels() {
     return;
   }
 
-  // Success - update vehicle info and refresh
-  updateVehicleInfo();
-  checkForModelUpdates();
+  // Success - reset button to check GitHub again
+  models_ready_to_download = false;
+  download_models_btn->setValue(tr("Check GitHub"));
 
   // Return to panel automatically (no success alert)
 }

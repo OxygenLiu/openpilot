@@ -36,6 +36,18 @@ void HudRenderer::updateState(const UIState &s) {
   v_ego_cluster_seen = v_ego_cluster_seen || car_state.getVEgoCluster() != 0.0;
   float v_ego = v_ego_cluster_seen ? car_state.getVEgoCluster() : car_state.getVEgo();
   speed = std::max<float>(0.0f, v_ego * (is_metric ? MS_TO_KPH : MS_TO_MPH));
+
+  // BMW vitals
+  bmw_diagnostics_available = s.scene.bmw_diagnostics_available;
+  bmw_coolant_temp = s.scene.bmw_coolant_temp;
+  bmw_oil_temp = s.scene.bmw_oil_temp;
+  bmw_battery_voltage = s.scene.bmw_battery_voltage;
+
+  // Get RHD status for vitals positioning
+  if (sm.updated("driverMonitoringState")) {
+    auto dm_state = sm["driverMonitoringState"].getDriverMonitoringState();
+    is_rhd = dm_state.getIsRHD();
+  }
 }
 
 void HudRenderer::draw(QPainter &p, const QRect &surface_rect) {
@@ -52,6 +64,11 @@ void HudRenderer::draw(QPainter &p, const QRect &surface_rect) {
     drawSetSpeed(p, surface_rect);
   }
   drawCurrentSpeed(p, surface_rect);
+
+  // Draw BMW vitals in bottom right corner
+  if (bmw_diagnostics_available) {
+    drawBMWVitals(p, surface_rect);
+  }
 
   p.restore();
 }
@@ -109,4 +126,58 @@ void HudRenderer::drawText(QPainter &p, int x, int y, const QString &text, int a
 
   p.setPen(QColor(0xff, 0xff, 0xff, alpha));
   p.drawText(real_rect.x(), real_rect.bottom(), text);
+}
+
+void HudRenderer::drawBMWVitals(QPainter &p, const QRect &surface_rect) {
+  // Draw BMW vitals at bottom corner, opposite to driver monitoring icon
+  // For RHD: driver monitoring on right, vitals on left
+  // For LHD: driver monitoring on left, vitals on right
+  // Stacked vertically: Coolant (top), Oil (middle), Battery (bottom)
+
+  const int btn_size = 192;
+  int offset = UI_BORDER_SIZE + btn_size / 2;  // Same offset as driver monitoring (126px)
+  int x = is_rhd ? offset : surface_rect.width() - offset;  // Opposite side from driver monitoring
+  int y_base = surface_rect.height() - offset + 100;  // Move down 2 lines (50px per line)
+  int line_spacing = 50;  // Vertical spacing between values
+  const int alpha = 204;  // 80% opacity for less intrusive display
+
+  p.setFont(InterFont(42, QFont::Bold));
+
+  // Coolant temperature - color coded (top)
+  int coolant_temp = (int)bmw_coolant_temp;
+  QColor coolant_color;
+  if (coolant_temp > 105) {
+    coolant_color = QColor(0xE2, 0x2C, 0x2C);  // Red for extremely hot
+  } else if (coolant_temp >= 90) {
+    coolant_color = QColor(0xDA, 0xB8, 0x25);  // Yellow for warm
+  } else {
+    coolant_color = QColor(0x5C, 0xB8, 0x5C);  // Green for cool
+  }
+  p.setPen(coolant_color);
+  drawText(p, x, y_base - line_spacing * 2, QString("%1°C").arg(coolant_temp), alpha);
+
+  // Oil temperature - color coded (middle)
+  int oil_temp = (int)bmw_oil_temp;
+  QColor oil_color;
+  if (oil_temp > 125) {
+    oil_color = QColor(0xE2, 0x2C, 0x2C);  // Red for high temp
+  } else if (oil_temp > 110) {
+    oil_color = QColor(0xDA, 0xB8, 0x25);  // Yellow for warm
+  } else {
+    oil_color = QColor(0x5C, 0xB8, 0x5C);  // Green for normal
+  }
+  p.setPen(oil_color);
+  drawText(p, x, y_base - line_spacing, QString("%1°C").arg(oil_temp), alpha);
+
+  // Battery voltage - color coded (bottom)
+  QColor battery_color;
+  if (bmw_battery_voltage < 11.5) {
+    battery_color = QColor(0xE2, 0x2C, 0x2C);  // Red for low voltage
+  } else if (bmw_battery_voltage < 12.0) {
+    battery_color = QColor(0xDA, 0xB8, 0x25);  // Yellow for marginal
+  } else {
+    battery_color = QColor(0x5C, 0xB8, 0x5C);  // Green for normal
+  }
+  p.setPen(battery_color);
+  drawText(p, x, y_base, QString("%1V").arg(bmw_battery_voltage, 0, 'f', 1), alpha);
 }
