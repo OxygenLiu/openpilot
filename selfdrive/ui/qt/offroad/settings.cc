@@ -898,9 +898,6 @@ void ModelsPanel::checkUpdateStatus() {
         download_models_btn->setValue(tr("Check GitHub"));
         ConfirmationDialog::alert(tr("No new models available"), this);
       }
-    } else {
-      download_models_btn->setValue(tr("Check GitHub"));
-      ConfirmationDialog::alert(tr("Failed to parse results"), this);
     }
   } else if (status == "error") {
     // Show error
@@ -908,6 +905,9 @@ void ModelsPanel::checkUpdateStatus() {
     download_models_btn->setValue(tr("Check GitHub"));
     ConfirmationDialog::alert(QString::fromStdString(error), this);
   }
+
+  // Otherwise, models are ready - proceed with download
+  downloadNewModels();
 }
 
 void ModelsPanel::downloadNewModels() {
