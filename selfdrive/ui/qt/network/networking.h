@@ -11,8 +11,8 @@
 class WifiItem : public QWidget {
   Q_OBJECT
 public:
-  explicit WifiItem(const QString &connecting_text, const QString &forget_text, QWidget* parent = nullptr);
-  void setItem(const Network& n, const QPixmap &icon, bool show_forget_btn, const QPixmap &strength);
+  explicit WifiItem(const QString &connecting_text, const QString &forget_text, const QString &proxy_text, QWidget* parent = nullptr);
+  void setItem(const Network& n, const QPixmap &icon, bool show_forget_btn, bool show_proxy_btn, bool proxy_valid, const QPixmap &strength);
 
 signals:
   // Cannot pass Network by reference. it may change after the signal is sent.
@@ -23,6 +23,7 @@ protected:
   ElidedLabel* ssidLabel;
   QPushButton* connecting;
   QPushButton* forgetBtn;
+  QPushButton* proxyBtn;
   QLabel* iconLabel;
   QLabel* strengthLabel;
   Network network;
@@ -33,6 +34,7 @@ class WifiUI : public QWidget {
 
 public:
   explicit WifiUI(QWidget *parent = 0, WifiManager* wifi = 0);
+  void setProxyValid(bool valid);
 
 private:
   WifiItem *getItem(int n);
@@ -45,6 +47,7 @@ private:
   QVector<QPixmap> strengths;
   ListWidget *wifi_list_widget = nullptr;
   std::vector<WifiItem*> wifi_items;
+  bool proxy_valid = false;
 
 signals:
   void connectToNetwork(const Network n);
@@ -58,6 +61,7 @@ class AdvancedNetworking : public QWidget {
 public:
   explicit AdvancedNetworking(QWidget* parent = 0, WifiManager* wifi = 0);
   void setGsmVisible(bool visible);
+  bool isProxyValid() const { return proxy_valid; }
 
 private:
   LabelControl* ipLabel;
@@ -67,12 +71,18 @@ private:
   ButtonControl* hiddenNetworkButton;
   ToggleControl* cellularMeteredToggle;
   MultiButtonControl* wifiMeteredToggle;
+  ToggleControl* proxyToggle;
+  ButtonControl* proxySettingsButton;
   WifiManager* wifi = nullptr;
   Params params;
+  bool proxy_valid = false;
+
+  void validateProxy();
 
 signals:
   void backPress();
   void requestWifiScreen();
+  void proxyValidationChanged(bool valid);
 
 public slots:
   void toggleTethering(bool enabled);

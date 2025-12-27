@@ -537,3 +537,84 @@ void WifiManager::changeTetheringPassword(const QString &newPassword) {
     }
   }
 }
+
+// Proxy functions
+bool WifiManager::isProxyEnabled() {
+  return Params().getBool("NetworkProxyEnabled");
+}
+
+void WifiManager::setProxyEnabled(bool enabled) {
+  Params().putBool("NetworkProxyEnabled", enabled);
+
+  // Set environment variables for system-wide proxy
+  QString proxy_url = getProxyUrl();
+  if (enabled && !proxy_url.isEmpty()) {
+    // Set all_proxy, http_proxy, https_proxy environment variables
+    qputenv("all_proxy", proxy_url.toUtf8());
+    qputenv("http_proxy", proxy_url.toUtf8());
+    qputenv("https_proxy", proxy_url.toUtf8());
+
+    // Also write to /etc/environment for persistence across reboots
+    QFile env_file("/etc/environment");
+    if (env_file.open(QIODevice::ReadWrite | QIODevice::Text)) {
+      QTextStream in(&env_file);
+      QString content = in.readAll();
+
+      // Remove old proxy entries
+      QStringList lines = content.split('\n');
+      QRegExp proxy_pattern("^(all|http|https)_proxy=.*");
+      QMutableStringListIterator it(lines);
+      while (it.hasNext()) {
+        if (proxy_pattern.exactMatch(it.next())) {
+          it.remove();
+        }
+      }
+
+      // Add new proxy entries
+      lines.append(QString("all_proxy=%1").arg(proxy_url));
+      lines.append(QString("http_proxy=%1").arg(proxy_url));
+      lines.append(QString("https_proxy=%1").arg(proxy_url));
+
+      env_file.resize(0);
+      env_file.write(lines.join('\n').toUtf8());
+      env_file.close();
+    }
+  } else {
+    // Unset environment variables
+    qunsetenv("all_proxy");
+    qunsetenv("http_proxy");
+    qunsetenv("https_proxy");
+
+    // Remove from /etc/environment
+    QFile env_file("/etc/environment");
+    if (env_file.open(QIODevice::ReadWrite | QIODevice::Text)) {
+      QTextStream in(&env_file);
+      QString content = in.readAll();
+
+      QStringList lines = content.split('\n');
+      QRegExp proxy_pattern("^(all|http|https)_proxy=.*");
+      QMutableStringListIterator it(lines);
+      while (it.hasNext()) {
+        if (proxy_pattern.exactMatch(it.next())) {
+          it.remove();
+        }
+      }
+
+      env_file.resize(0);
+      env_file.write(lines.join('\n').toUtf8());
+      env_file.close();
+    }
+  }
+}
+
+QString WifiManager::getProxyUrl() {
+  return QString::fromStdString(Params().get("NetworkProxyUrl"));
+}
+
+void WifiManager::setProxyUrl(const QString &url) {
+  Params().put("NetworkProxyUrl", url.toStdString());
+  // If proxy is enabled, update the environment variables
+  if (isProxyEnabled()) {
+    setProxyEnabled(true);
+  }
+}

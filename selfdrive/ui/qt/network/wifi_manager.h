@@ -69,6 +69,12 @@ public:
   void changeTetheringPassword(const QString &newPassword);
   QString getTetheringPassword();
 
+  // Proxy functions
+  bool isProxyEnabled();
+  void setProxyEnabled(bool enabled);
+  QString getProxyUrl();
+  void setProxyUrl(const QString &url);
+
 private:
   QString adapter;  // Path to network manager wifi-device
   QTimer timer;
