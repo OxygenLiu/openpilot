@@ -11,8 +11,8 @@
 class WifiItem : public QWidget {
   Q_OBJECT
 public:
-  explicit WifiItem(const QString &connecting_text, const QString &forget_text, const QString &proxy_text, QWidget* parent = nullptr);
-  void setItem(const Network& n, const QPixmap &icon, bool show_forget_btn, bool show_proxy_btn, bool proxy_valid, const QPixmap &strength);
+  explicit WifiItem(const QString &connecting_text, const QString &forget_text, const QString &proxy_text, const QString &internet_text, QWidget* parent = nullptr);
+  void setItem(const Network& n, const QPixmap &icon, bool show_forget_btn, bool show_proxy_btn, bool proxy_valid, bool show_internet_btn, bool internet_connected, const QPixmap &strength);
 
 signals:
   // Cannot pass Network by reference. it may change after the signal is sent.
@@ -24,6 +24,7 @@ protected:
   QPushButton* connecting;
   QPushButton* forgetBtn;
   QPushButton* proxyBtn;
+  QPushButton* internetBtn;
   QLabel* iconLabel;
   QLabel* strengthLabel;
   Network network;
@@ -35,6 +36,7 @@ class WifiUI : public QWidget {
 public:
   explicit WifiUI(QWidget *parent = 0, WifiManager* wifi = 0);
   void setProxyValid(bool valid);
+  void setInternetConnected(bool connected);
 
 private:
   WifiItem *getItem(int n);
@@ -48,6 +50,7 @@ private:
   ListWidget *wifi_list_widget = nullptr;
   std::vector<WifiItem*> wifi_items;
   bool proxy_valid = false;
+  bool internet_connected = false;
 
 signals:
   void connectToNetwork(const Network n);
@@ -62,6 +65,7 @@ public:
   explicit AdvancedNetworking(QWidget* parent = 0, WifiManager* wifi = 0);
   void setGsmVisible(bool visible);
   bool isProxyValid() const { return proxy_valid; }
+  bool isInternetConnected() const { return internet_connected; }
 
 private:
   LabelControl* ipLabel;
@@ -76,13 +80,16 @@ private:
   WifiManager* wifi = nullptr;
   Params params;
   bool proxy_valid = false;
+  bool internet_connected = false;
 
   void validateProxy();
+  void checkConnectivity();
 
 signals:
   void backPress();
   void requestWifiScreen();
   void proxyValidationChanged(bool valid);
+  void connectivityChanged(bool connected);
 
 public slots:
   void toggleTethering(bool enabled);

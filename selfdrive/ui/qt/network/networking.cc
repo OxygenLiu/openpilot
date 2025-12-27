@@ -54,6 +54,7 @@ Networking::Networking(QWidget* parent, bool show_advanced) : QFrame(parent) {
   connect(an, &AdvancedNetworking::backPress, [=]() { main_layout->setCurrentWidget(wifiScreen); });
   connect(an, &AdvancedNetworking::requestWifiScreen, [=]() { main_layout->setCurrentWidget(wifiScreen); });
   connect(an, &AdvancedNetworking::proxyValidationChanged, wifiWidget, &WifiUI::setProxyValid);
+  connect(an, &AdvancedNetworking::connectivityChanged, wifiWidget, &WifiUI::setInternetConnected);
   main_layout->addWidget(an);
 
   QPalette pal = palette();
@@ -292,6 +293,11 @@ void AdvancedNetworking::refresh() {
     validateProxy();
   }
 
+  // Always check internet connectivity (with or without proxy)
+  if (!wifi->ipv4_address.isEmpty()) {
+    checkConnectivity();
+  }
+
   update();
 }
 
@@ -358,6 +364,43 @@ void AdvancedNetworking::validateProxy() {
   });
 }
 
+void AdvancedNetworking::checkConnectivity() {
+  // Generic internet connectivity check - works with or without proxy
+  // If proxy is enabled, it will automatically be used via environment variables
+  QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+
+  // Test connection to GitHub
+  QNetworkRequest request(QUrl("https://github.com"));
+  request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+  QNetworkReply *reply = manager->get(request);
+
+  // Set timeout
+  QTimer *timer = new QTimer(this);
+  timer->setSingleShot(true);
+  connect(timer, &QTimer::timeout, [=]() {
+    reply->abort();
+  });
+  timer->start(5000);  // 5 second timeout
+
+  connect(reply, &QNetworkReply::finished, [=]() {
+    timer->stop();
+    if (reply->error() == QNetworkReply::NoError ||
+        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 301 ||
+        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 302) {
+      // Success - internet is working
+      internet_connected = true;
+      emit connectivityChanged(true);
+    } else {
+      // Failed - no internet connection
+      internet_connected = false;
+      emit connectivityChanged(false);
+    }
+    reply->deleteLater();
+    manager->deleteLater();
+    timer->deleteLater();
+  });
+}
+
 void AdvancedNetworking::toggleTethering(bool enabled) {
   wifi->setTetheringEnabled(enabled);
   tetheringToggle->setEnabled(false);
@@ -397,7 +440,7 @@ WifiUI::WifiUI(QWidget *parent, WifiManager* wifi) : QWidget(parent), wifi(wifi)
       border-radius: 4px;
       background-color: #8A8A8A;
     }
-    #forgetBtn, #proxyBtn {
+    #forgetBtn, #proxyBtn, #internetBtn {
       font-size: 32px;
       font-weight: 600;
       color: #292929;
@@ -408,7 +451,7 @@ WifiUI::WifiUI(QWidget *parent, WifiManager* wifi) : QWidget(parent), wifi(wifi)
       padding-bottom: 16px;
       padding-top: 16px;
     }
-    #forgetBtn:pressed, #proxyBtn:pressed {
+    #forgetBtn:pressed, #proxyBtn:pressed, #internetBtn:pressed {
       background-color: #828282;
     }
     #connecting {
@@ -438,6 +481,11 @@ void WifiUI::setProxyValid(bool valid) {
   refresh();  // Refresh to update PROXY badge colors
 }
 
+void WifiUI::setInternetConnected(bool connected) {
+  internet_connected = connected;
+  refresh();  // Refresh to update internet connectivity badge colors
+}
+
 void WifiUI::refresh() {
   bool is_empty = wifi->seenNetworks.isEmpty();
   scanningLabel->setVisible(is_empty);
@@ -463,10 +511,11 @@ void WifiUI::refresh() {
     }
     bool show_forget_btn = wifi->isKnownConnection(network.ssid) && !is_tethering_enabled;
     bool show_proxy_btn = (network.connected == ConnectedType::CONNECTED) && is_proxy_enabled;
+    bool show_internet_btn = (network.connected == ConnectedType::CONNECTED);
     QPixmap strength = strengths[strengthLevel(network.strength)];
 
     auto item = getItem(n++);
-    item->setItem(network, status_icon, show_forget_btn, show_proxy_btn, proxy_valid, strength);
+    item->setItem(network, status_icon, show_forget_btn, show_proxy_btn, proxy_valid, show_internet_btn, internet_connected, strength);
     item->setVisible(true);
   }
   for (; n < wifi_items.size(); ++n) wifi_items[n]->setVisible(false);
@@ -475,7 +524,7 @@ void WifiUI::refresh() {
 }
 
 WifiItem *WifiUI::getItem(int n) {
-  auto item = n < wifi_items.size() ? wifi_items[n] : wifi_items.emplace_back(new WifiItem(tr("CONNECTING..."), tr("FORGET"), tr("PROXY")));
+  auto item = n < wifi_items.size() ? wifi_items[n] : wifi_items.emplace_back(new WifiItem(tr("CONNECTING..."), tr("FORGET"), tr("PROXY"), tr("INTERNET")));
   if (!item->parentWidget()) {
     QObject::connect(item, &WifiItem::connectToNetwork, this, &WifiUI::connectToNetwork);
     QObject::connect(item, &WifiItem::forgotNetwork, [this](const Network n) {
@@ -489,7 +538,7 @@ WifiItem *WifiUI::getItem(int n) {
 
 // WifiItem
 
-WifiItem::WifiItem(const QString &connecting_text, const QString &forget_text, const QString &proxy_text, QWidget *parent) : QWidget(parent) {
+WifiItem::WifiItem(const QString &connecting_text, const QString &forget_text, const QString &proxy_text, const QString &internet_text, QWidget *parent) : QWidget(parent) {
   QHBoxLayout *hlayout = new QHBoxLayout(this);
   hlayout->setContentsMargins(44, 0, 73, 0);
   hlayout->setSpacing(50);
@@ -499,6 +548,8 @@ WifiItem::WifiItem(const QString &connecting_text, const QString &forget_text, c
   ssidLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   hlayout->addWidget(connecting = new QPushButton(connecting_text), 0, Qt::AlignRight);
   connecting->setObjectName("connecting");
+  hlayout->addWidget(internetBtn = new QPushButton(internet_text), 0, Qt::AlignRight);
+  internetBtn->setObjectName("internetBtn");
   hlayout->addWidget(proxyBtn = new QPushButton(proxy_text), 0, Qt::AlignRight);
   proxyBtn->setObjectName("proxyBtn");
   hlayout->addWidget(forgetBtn = new QPushButton(forget_text), 0, Qt::AlignRight);
@@ -513,7 +564,7 @@ WifiItem::WifiItem(const QString &connecting_text, const QString &forget_text, c
   });
 }
 
-void WifiItem::setItem(const Network &n, const QPixmap &status_icon, bool show_forget_btn, bool show_proxy_btn, bool proxy_valid, const QPixmap &strength_icon) {
+void WifiItem::setItem(const Network &n, const QPixmap &status_icon, bool show_forget_btn, bool show_proxy_btn, bool proxy_valid, bool show_internet_btn, bool internet_connected, const QPixmap &strength_icon) {
   network = n;
 
   ssidLabel->setText(n.ssid);
@@ -521,9 +572,19 @@ void WifiItem::setItem(const Network &n, const QPixmap &status_icon, bool show_f
   ssidLabel->setFont(InterFont(55, network.connected == ConnectedType::DISCONNECTED ? QFont::Normal : QFont::Bold));
 
   connecting->setVisible(n.connected == ConnectedType::CONNECTING);
-  proxyBtn->setVisible(show_proxy_btn);
+
+  // Set internet connectivity badge
+  internetBtn->setVisible(show_internet_btn);
+  if (show_internet_btn) {
+    if (internet_connected) {
+      internetBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }");  // Green
+    } else {
+      internetBtn->setStyleSheet("QPushButton { background-color: #F44336; color: white; }");  // Red
+    }
+  }
 
   // Set proxy badge color based on validation status
+  proxyBtn->setVisible(show_proxy_btn);
   if (show_proxy_btn) {
     if (proxy_valid) {
       proxyBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }");  // Green
