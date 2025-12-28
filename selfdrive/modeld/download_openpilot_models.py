@@ -311,6 +311,10 @@ def check_updates():
     """Check for new models not yet installed
 
     Returns JSON with new models available for download
+    Filters:
+    - Only compatible models (after desire_pulse transition: Aug 27, 2025)
+    - Excludes reverted models
+    - Excludes already downloaded models
     """
     # Load registry
     driving_models, dm_models = load_registry()
@@ -332,24 +336,43 @@ def check_updates():
         installed_dm = {d.name for d in dm_models_dir.iterdir()
                        if d.is_dir() and not d.name.startswith('_')}
 
-    # Find new models
+    # Find new models with filtering
     new_driving = []
     for model_id, info in driving_models.items():
-        if model_id not in installed_driving:
-            new_driving.append({
-                'id': model_id,
-                'type': 'driving',
-                **info
-            })
+        # Skip if already installed
+        if model_id in installed_driving:
+            continue
+
+        # Skip reverted models (model_id contains "revert")
+        if 'revert' in model_id.lower() or 'revert' in info.get('name', '').lower():
+            continue
+
+        # Check compatibility (only show v0.10.1+ compatible models)
+        is_compatible, _ = check_model_compatibility(info, ModelType.DRIVING)
+        if not is_compatible:
+            continue
+
+        new_driving.append({
+            'id': model_id,
+            'type': 'driving',
+            **info
+        })
 
     new_dm = []
     for model_id, info in dm_models.items():
-        if model_id not in installed_dm:
-            new_dm.append({
-                'id': model_id,
-                'type': 'dm',
-                **info
-            })
+        # Skip if already installed
+        if model_id in installed_dm:
+            continue
+
+        # Skip reverted models
+        if 'revert' in model_id.lower() or 'revert' in info.get('name', '').lower():
+            continue
+
+        new_dm.append({
+            'id': model_id,
+            'type': 'dm',
+            **info
+        })
 
     # Output as JSON for UI parsing
     result = {
