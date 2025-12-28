@@ -32,7 +32,7 @@ class ModelInitializer:
     MODEL_CONFIGS = {
         'driving': {
             'models_dir': BASE_DATA_DIR / 'models',
-            'active_file': '.active_driving_model',
+            'active_file': 'active_driving_model',
             'files_to_copy': [
                 'driving_vision.onnx',
                 'driving_policy.onnx',
@@ -45,8 +45,8 @@ class ModelInitializer:
             ]
         },
         'dm': {
-            'models_dir': BASE_DATA_DIR / 'dm-models',
-            'active_file': '.active_dm_model',
+            'models_dir': BASE_DATA_DIR / 'models',
+            'active_file': 'active_dm_model',
             'files_to_copy': [
                 'dmonitoring_model.onnx',
             ],
