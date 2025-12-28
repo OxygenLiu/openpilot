@@ -49,7 +49,7 @@ class ModelSwapper:
                 'driving_vision_metadata.pkl',
                 'driving_policy_metadata.pkl',
             ],
-            'active_file': '.active_driving_model',
+            'active_file': 'active_driving_model',
             'display_name': 'Driving Model'
         },
         ModelType.DM: {
@@ -60,7 +60,7 @@ class ModelSwapper:
             'pkl_files': [
                 'dmonitoring_model_tinygrad.pkl',
             ],
-            'active_file': '.active_dm_model',
+            'active_file': 'active_dm_model',
             'display_name': 'Driver Monitoring Model'
         }
     }
@@ -79,7 +79,8 @@ class ModelSwapper:
         self.models_dir = self.config['models_dir']
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
-        self.active_model_file = self.models_dir / self.config['active_file']
+        # Active file is at parent level: /data/models/active_*
+        self.active_model_file = self.models_dir.parent / self.config['active_file']
 
         self.onnx_files = self.config['onnx_files']
         self.pkl_files = self.config['pkl_files']
