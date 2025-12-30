@@ -164,13 +164,13 @@ class LongitudinalPlanner:
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
+    self.output_v_target = output_v_target_mpc
+
     if mode == 'acc':
       output_a_target = output_a_target_mpc
-      self.output_v_target = output_v_target_mpc
       self.output_should_stop = output_should_stop_mpc
     else:
       output_a_target = min(output_a_target_mpc, output_a_target_e2e)
-      self.output_v_target = output_v_target_mpc
       self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
 
     for idx in range(2):
