@@ -61,6 +61,7 @@ class LongitudinalPlanner:
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
+    self.output_v_target = init_v
     self.output_a_target = 0.0
     self.output_should_stop = False
 
@@ -165,9 +166,11 @@ class LongitudinalPlanner:
 
     if mode == 'acc':
       output_a_target = output_a_target_mpc
+      self.output_v_target = output_v_target_mpc
       self.output_should_stop = output_should_stop_mpc
     else:
       output_a_target = min(output_a_target_mpc, output_a_target_e2e)
+      self.output_v_target = output_v_target_mpc
       self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
 
     for idx in range(2):
@@ -193,6 +196,7 @@ class LongitudinalPlanner:
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
+    longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
