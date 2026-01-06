@@ -822,6 +822,7 @@ void VehiclePanel::updateRegistryOrDownload() {
       update_timer = new QTimer(this);
       connect(update_timer, &QTimer::timeout, this, &VehiclePanel::checkUpdateStatus);
     }
+    update_poll_count = 0;  // Reset timeout counter
     update_timer->start(1000);  // Poll every 1 second
     return;
   }
@@ -831,6 +832,16 @@ void VehiclePanel::updateRegistryOrDownload() {
 }
 
 void VehiclePanel::checkUpdateStatus() {
+  // Increment poll counter and check for timeout
+  update_poll_count++;
+  if (update_poll_count >= 60) {  // 60 seconds timeout (60 polls × 1 second)
+    update_timer->stop();
+    download_models_btn->setValue(tr("Check GitHub"));
+    download_models_btn->setEnabled(true);
+    ConfirmationDialog::alert(tr("Update check timed out after 60 seconds. Please try again."), this);
+    return;
+  }
+
   // Check Params for update status
   std::string status = params.get("ModelUpdateStatus");
 

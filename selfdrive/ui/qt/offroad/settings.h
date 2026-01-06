@@ -120,6 +120,7 @@ private:
   ButtonControl *download_models_btn;
   bool models_ready_to_download = false;  // Track if new models are available
   QTimer *update_timer = nullptr;  // Timer to poll Params for update status
+  int update_poll_count = 0;  // Track polling iterations for timeout (60 second max)
   void updateModelButtonText();
   void downloadNewModels();
 };
