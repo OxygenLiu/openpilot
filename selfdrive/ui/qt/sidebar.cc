@@ -81,12 +81,25 @@ void Sidebar::offroadTransition(bool offroad) {
   update();
 }
 
+void Sidebar::updateConnectivity(bool connected) {
+  internet_connected = connected;
+  update();  // Trigger repaint with new color
+}
+
 void Sidebar::updateState(const UIState &s) {
   if (!isVisible()) return;
 
   auto &sm = *(s.sm);
 
   networking = networking ? networking : window()->findChild<Networking *>("");
+  if (networking) {
+    // Connect to connectivity signal if not already connected
+    static bool signal_connected = false;
+    if (!signal_connected) {
+      QObject::connect(networking, &Networking::connectivityChanged, this, &Sidebar::updateConnectivity);
+      signal_connected = true;
+    }
+  }
   bool tethering_on = networking && networking->wifi->tethering_on;
   auto deviceState = sm["deviceState"].getDeviceState();
   setProperty("netType", tethering_on ? "Hotspot": network_type[deviceState.getNetworkType()]);
@@ -174,7 +187,14 @@ void Sidebar::paintEvent(QPaintEvent *event) {
   }
 
   p.setFont(InterFont(35));
-  p.setPen(QColor(0xff, 0xff, 0xff));
+
+  // Set Wi-Fi text color based on GitHub connectivity
+  if (net_type == tr("Wi-Fi")) {
+    p.setPen(internet_connected ? QColor(0x4C, 0xAF, 0x50) : QColor(0xF4, 0x43, 0x36));  // Green or Red
+  } else {
+    p.setPen(QColor(0xff, 0xff, 0xff));  // White for other network types
+  }
+
   const QRect r = QRect(58, 247, width() - 100, 50);
 
   if (net_type == "Hotspot") {
