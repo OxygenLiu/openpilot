@@ -55,7 +55,7 @@ def update_and_check():
             try:
                 data = json.loads(result.stdout)
                 params.put("ModelUpdateStatus", "complete")
-                params.put("ModelUpdateResults", json.dumps(data))
+                params.put("ModelUpdateResults", data)  # Params handles JSON serialization
                 return 0
             except json.JSONDecodeError:
                 params.put("ModelUpdateStatus", "error")
