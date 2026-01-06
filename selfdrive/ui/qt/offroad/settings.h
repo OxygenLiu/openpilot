@@ -108,12 +108,14 @@ class ModelsPanel : public ListWidget {
 public:
   explicit ModelsPanel(SettingsWindow *parent);
 
+public slots:
+  void onNetworkConnectivityChanged(bool connected);  // Update button state based on connectivity
+
 private slots:
   void openDrivingModelSelector();
   void openDMModelSelector();
   void updateRegistryOrDownload();
   void checkUpdateStatus();  // Poll Params for async update status
-  void onNetworkConnectivityChanged(bool connected);  // Update button state based on connectivity
 
 private:
   Params params;
