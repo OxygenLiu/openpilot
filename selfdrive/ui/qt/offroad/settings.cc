@@ -480,15 +480,15 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   // Forward network connectivity signal from Networking to SettingsWindow
   QObject::connect(networking, &Networking::connectivityChanged, this, &SettingsWindow::networkConnectivityChanged);
 
-  auto vehiclePanel = new VehiclePanel(this);
-  // Connect network connectivity to vehicle panel for UPDATE button enable/disable
-  QObject::connect(this, &SettingsWindow::networkConnectivityChanged, vehiclePanel, &VehiclePanel::onNetworkConnectivityChanged);
+  auto modelsPanel = new ModelsPanel(this);
+  // Connect network connectivity to models panel for UPDATE button enable/disable
+  QObject::connect(this, &SettingsWindow::networkConnectivityChanged, modelsPanel, &ModelsPanel::onNetworkConnectivityChanged);
 
   QList<QPair<QString, QWidget *>> panels = {
     {tr("Device"), device},
     {tr("Network"), networking},
     {tr("Toggles"), toggles},
-    {tr("Models"), vehiclePanel},
+    {tr("Models"), modelsPanel},
     {tr("Software"), new SoftwarePanel(this)},
     {tr("Developer"), new DeveloperPanel(this)},
   };
@@ -552,20 +552,20 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   )");
 }
 
-VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
+ModelsPanel::ModelsPanel(SettingsWindow *parent) : ListWidget(parent) {
   // Driving model selector button
   driving_model_selector_btn = new ButtonControl(tr("Driving Model"), tr("SELECT"));
-  QObject::connect(driving_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDrivingModelSelector);
+  QObject::connect(driving_model_selector_btn, &ButtonControl::clicked, this, &ModelsPanel::openDrivingModelSelector);
   addItem(driving_model_selector_btn);
 
   // Driver monitoring model selector button
   dm_model_selector_btn = new ButtonControl(tr("DM Model"), tr("SELECT"));
-  QObject::connect(dm_model_selector_btn, &ButtonControl::clicked, this, &VehiclePanel::openDMModelSelector);
+  QObject::connect(dm_model_selector_btn, &ButtonControl::clicked, this, &ModelsPanel::openDMModelSelector);
   addItem(dm_model_selector_btn);
 
   // Update registry / Download models button
   download_models_btn = new ButtonControl(tr("Model Updates"), tr("UPDATE"));
-  QObject::connect(download_models_btn, &ButtonControl::clicked, this, &VehiclePanel::updateRegistryOrDownload);
+  QObject::connect(download_models_btn, &ButtonControl::clicked, this, &ModelsPanel::updateRegistryOrDownload);
   addItem(download_models_btn);
   download_models_btn->setValue(tr("No Network"));  // Default text when offline
   download_models_btn->setEnabled(false);  // Disabled until network connectivity confirmed
@@ -574,7 +574,7 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   updateModelButtonText();
 }
 
-void VehiclePanel::onNetworkConnectivityChanged(bool connected) {
+void ModelsPanel::onNetworkConnectivityChanged(bool connected) {
   network_connected = connected;
 
   // Enable/disable UPDATE button based on GitHub connectivity
@@ -586,7 +586,7 @@ void VehiclePanel::onNetworkConnectivityChanged(bool connected) {
   // If models are ready to download, keep button enabled regardless of connectivity
 }
 
-void VehiclePanel::openDrivingModelSelector() {
+void ModelsPanel::openDrivingModelSelector() {
   const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
 
   while (true) {
@@ -676,7 +676,7 @@ void VehiclePanel::openDrivingModelSelector() {
   }
 }
 
-void VehiclePanel::openDMModelSelector() {
+void ModelsPanel::openDMModelSelector() {
   const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
 
   while (true) {
@@ -766,7 +766,7 @@ void VehiclePanel::openDMModelSelector() {
   }
 }
 
-void VehiclePanel::updateModelButtonText() {
+void ModelsPanel::updateModelButtonText() {
   const QString script_path = "/data/openpilot/selfdrive/modeld/model_swapper.py";
   QRegularExpression date_pattern(" \\(\\d{4}-\\d{2}-\\d{2}\\)$");
 
@@ -821,7 +821,7 @@ void VehiclePanel::updateModelButtonText() {
   }
 }
 
-void VehiclePanel::updateRegistryOrDownload() {
+void ModelsPanel::updateRegistryOrDownload() {
   // If models not yet ready, update registry from GitHub first
   if (!models_ready_to_download) {
     // Show progress
@@ -840,7 +840,7 @@ void VehiclePanel::updateRegistryOrDownload() {
     // Start polling Params for status updates
     if (!update_timer) {
       update_timer = new QTimer(this);
-      connect(update_timer, &QTimer::timeout, this, &VehiclePanel::checkUpdateStatus);
+      connect(update_timer, &QTimer::timeout, this, &ModelsPanel::checkUpdateStatus);
     }
     update_poll_count = 0;  // Reset timeout counter
     update_timer->start(1000);  // Poll every 1 second
@@ -851,7 +851,7 @@ void VehiclePanel::updateRegistryOrDownload() {
   downloadNewModels();
 }
 
-void VehiclePanel::checkUpdateStatus() {
+void ModelsPanel::checkUpdateStatus() {
   // Increment poll counter and check for timeout
   update_poll_count++;
   if (update_poll_count >= 60) {  // 60 seconds timeout (60 polls × 1 second)
@@ -910,7 +910,7 @@ void VehiclePanel::checkUpdateStatus() {
   }
 }
 
-void VehiclePanel::downloadNewModels() {
+void ModelsPanel::downloadNewModels() {
   // Get list of new models
   const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
 

@@ -103,10 +103,10 @@ private:
   ParamWatcher *fs_watch;
 };
 
-class VehiclePanel : public ListWidget {
+class ModelsPanel : public ListWidget {
   Q_OBJECT
 public:
-  explicit VehiclePanel(SettingsWindow *parent);
+  explicit ModelsPanel(SettingsWindow *parent);
 
 private slots:
   void openDrivingModelSelector();
