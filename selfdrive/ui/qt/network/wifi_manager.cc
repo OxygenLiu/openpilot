@@ -65,6 +65,11 @@ WifiManager::WifiManager(QObject *parent) : QObject(parent) {
   timer.callOnTimeout(this, &WifiManager::requestScan);
 
   initConnections();
+
+  // Restore proxy settings from persistent storage if enabled
+  if (isProxyEnabled()) {
+    setProxyEnabled(true);  // Re-apply proxy environment variables with saved URL
+  }
 }
 
 void WifiManager::setup() {

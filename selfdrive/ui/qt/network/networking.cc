@@ -55,6 +55,8 @@ Networking::Networking(QWidget* parent, bool show_advanced) : QFrame(parent) {
   connect(an, &AdvancedNetworking::requestWifiScreen, [=]() { main_layout->setCurrentWidget(wifiScreen); });
   connect(an, &AdvancedNetworking::proxyValidationChanged, wifiWidget, &WifiUI::setProxyValid);
   connect(an, &AdvancedNetworking::connectivityChanged, wifiWidget, &WifiUI::setInternetConnected);
+  // Forward connectivity signal for sidebar color update
+  connect(an, &AdvancedNetworking::connectivityChanged, this, &Networking::connectivityChanged);
   main_layout->addWidget(an);
 
   QPalette pal = palette();

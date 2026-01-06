@@ -113,6 +113,9 @@ private:
   void showEvent(QShowEvent* event) override;
   void hideEvent(QHideEvent* event) override;
 
+signals:
+  void connectivityChanged(bool connected);  // Forward connectivity status for sidebar color
+
 public slots:
   void refresh();
 
