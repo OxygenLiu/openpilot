@@ -477,11 +477,18 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   auto networking = new Networking(this);
   QObject::connect(uiState()->prime_state, &PrimeState::changed, networking, &Networking::setPrimeType);
 
+  // Forward network connectivity signal from Networking to SettingsWindow
+  QObject::connect(networking, &Networking::connectivityChanged, this, &SettingsWindow::networkConnectivityChanged);
+
+  auto vehiclePanel = new VehiclePanel(this);
+  // Connect network connectivity to vehicle panel for UPDATE button enable/disable
+  QObject::connect(this, &SettingsWindow::networkConnectivityChanged, vehiclePanel, &VehiclePanel::onNetworkConnectivityChanged);
+
   QList<QPair<QString, QWidget *>> panels = {
     {tr("Device"), device},
     {tr("Network"), networking},
     {tr("Toggles"), toggles},
-    {tr("Models"), new VehiclePanel(this)},
+    {tr("Models"), vehiclePanel},
     {tr("Software"), new SoftwarePanel(this)},
     {tr("Developer"), new DeveloperPanel(this)},
   };
@@ -560,10 +567,23 @@ VehiclePanel::VehiclePanel(SettingsWindow *parent) : ListWidget(parent) {
   download_models_btn = new ButtonControl(tr("Model Updates"), tr("UPDATE"));
   QObject::connect(download_models_btn, &ButtonControl::clicked, this, &VehiclePanel::updateRegistryOrDownload);
   addItem(download_models_btn);
-  download_models_btn->setValue(tr("Check GitHub"));  // Default text
+  download_models_btn->setValue(tr("No Network"));  // Default text when offline
+  download_models_btn->setEnabled(false);  // Disabled until network connectivity confirmed
 
   // Update model button text with active models
   updateModelButtonText();
+}
+
+void VehiclePanel::onNetworkConnectivityChanged(bool connected) {
+  network_connected = connected;
+
+  // Enable/disable UPDATE button based on GitHub connectivity
+  if (!models_ready_to_download) {
+    // Only update button state if not in "Download (X new)" mode
+    download_models_btn->setEnabled(connected);
+    download_models_btn->setValue(connected ? tr("Check GitHub") : tr("No Network"));
+  }
+  // If models are ready to download, keep button enabled regardless of connectivity
 }
 
 void VehiclePanel::openDrivingModelSelector() {

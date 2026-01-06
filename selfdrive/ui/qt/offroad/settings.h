@@ -31,6 +31,7 @@ signals:
   void showDriverView();
   void expandToggleDescription(const QString &param);
   void scrollToToggle(const QString &param);
+  void networkConnectivityChanged(bool connected);  // Forward connectivity for model updates
 
 private:
   QPushButton *sidebar_alert_widget;
@@ -112,6 +113,7 @@ private slots:
   void openDMModelSelector();
   void updateRegistryOrDownload();
   void checkUpdateStatus();  // Poll Params for async update status
+  void onNetworkConnectivityChanged(bool connected);  // Update button state based on connectivity
 
 private:
   Params params;
@@ -119,6 +121,7 @@ private:
   ButtonControl *dm_model_selector_btn;
   ButtonControl *download_models_btn;
   bool models_ready_to_download = false;  // Track if new models are available
+  bool network_connected = false;  // Track GitHub connectivity for UPDATE button
   QTimer *update_timer = nullptr;  // Timer to poll Params for update status
   int update_poll_count = 0;  // Track polling iterations for timeout (60 second max)
   void updateModelButtonText();
