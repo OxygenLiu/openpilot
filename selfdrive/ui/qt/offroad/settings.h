@@ -111,6 +111,7 @@ private slots:
   void openDrivingModelSelector();
   void openDMModelSelector();
   void updateRegistryOrDownload();
+  void checkUpdateStatus();  // Poll Params for async update status
 
 private:
   Params params;
@@ -118,6 +119,7 @@ private:
   ButtonControl *dm_model_selector_btn;
   ButtonControl *download_models_btn;
   bool models_ready_to_download = false;  // Track if new models are available
+  QTimer *update_timer = nullptr;  // Timer to poll Params for update status
   void updateModelButtonText();
   void downloadNewModels();
 };

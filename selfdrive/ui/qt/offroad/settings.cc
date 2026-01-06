@@ -802,50 +802,81 @@ void VehiclePanel::updateModelButtonText() {
 }
 
 void VehiclePanel::updateRegistryOrDownload() {
-  const QString script_path = "/data/openpilot/selfdrive/modeld/download_openpilot_models.py";
-
   // If models not yet ready, update registry from GitHub first
   if (!models_ready_to_download) {
     // Show progress
     download_models_btn->setValue(tr("Checking..."));
+    download_models_btn->setEnabled(false);  // Disable button during update
 
-    // Update registry from GitHub
-    QProcess update_process;
-    update_process.start("python3", QStringList() << script_path << "update-registry");
-    if (!update_process.waitForFinished(15000)) {  // 15 second timeout for GitHub API
-      download_models_btn->setValue(tr("Check GitHub"));
-      ConfirmationDialog::alert(tr("Failed to connect to GitHub"), this);
-      return;
+    // Clear previous status
+    params.remove("ModelUpdateStatus");
+    params.remove("ModelUpdateResults");
+    params.remove("ModelUpdateError");
+
+    // Launch async Python script (fire and forget - no Qt process management!)
+    QProcess::startDetached("python3", QStringList()
+      << "/data/openpilot/selfdrive/modeld/update_models_async.py");
+
+    // Start polling Params for status updates
+    if (!update_timer) {
+      update_timer = new QTimer(this);
+      connect(update_timer, &QTimer::timeout, this, &VehiclePanel::checkUpdateStatus);
     }
-
-    // Check if new models were found
-    QProcess check_process;
-    check_process.start("python3", QStringList() << script_path << "check-updates");
-    if (check_process.waitForFinished(5000)) {
-      QString output = check_process.readAllStandardOutput();
-      QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
-
-      if (!doc.isNull() && doc.isObject()) {
-        QJsonObject obj = doc.object();
-        int total = obj["total"].toInt();
-
-        if (total > 0) {
-          // Models found - change button to download mode
-          models_ready_to_download = true;
-          download_models_btn->setValue(QString(tr("Download (%1 new)")).arg(total));
-        } else {
-          // No new models
-          models_ready_to_download = false;
-          download_models_btn->setValue(tr("Check GitHub"));
-          ConfirmationDialog::alert(tr("No new models available"), this);
-        }
-      }
-    }
+    update_timer->start(1000);  // Poll every 1 second
     return;
   }
 
   // Otherwise, models are ready - proceed with download
   downloadNewModels();
+}
+
+void VehiclePanel::checkUpdateStatus() {
+  // Check Params for update status
+  std::string status = params.get("ModelUpdateStatus");
+
+  if (status.empty()) {
+    // Still waiting for script to start
+    return;
+  }
+
+  if (status == "checking") {
+    // Still in progress
+    return;
+  }
+
+  // Update complete or error - stop polling
+  update_timer->stop();
+  download_models_btn->setEnabled(true);
+
+  if (status == "complete") {
+    // Parse results
+    std::string results_json = params.get("ModelUpdateResults");
+    QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(results_json));
+
+    if (!doc.isNull() && doc.isObject()) {
+      QJsonObject obj = doc.object();
+      int total = obj["total"].toInt();
+
+      if (total > 0) {
+        // Models found - change button to download mode
+        models_ready_to_download = true;
+        download_models_btn->setValue(QString(tr("Download (%1 new)")).arg(total));
+      } else {
+        // No new models
+        models_ready_to_download = false;
+        download_models_btn->setValue(tr("Check GitHub"));
+        ConfirmationDialog::alert(tr("No new models available"), this);
+      }
+    } else {
+      download_models_btn->setValue(tr("Check GitHub"));
+      ConfirmationDialog::alert(tr("Failed to parse results"), this);
+    }
+  } else if (status == "error") {
+    // Show error
+    std::string error = params.get("ModelUpdateError");
+    download_models_btn->setValue(tr("Check GitHub"));
+    ConfirmationDialog::alert(QString::fromStdString(error), this);
+  }
 }
 
 void VehiclePanel::downloadNewModels() {
