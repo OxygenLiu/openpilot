@@ -312,7 +312,7 @@ def check_updates():
 
     Returns JSON with new models available for download
     Filters:
-    - Only compatible models (after desire_pulse transition: Aug 27, 2025)
+    - Only models >= Firehose (2025-09-05) for v0.10.1+ compatibility
     - Excludes reverted models
     - Excludes already downloaded models
     """
@@ -343,13 +343,12 @@ def check_updates():
         if model_id in installed_driving:
             continue
 
-        # Skip reverted models (model_id contains "revert")
-        if 'revert' in model_id.lower() or 'revert' in info.get('name', '').lower():
+        # FILTER 1: Exclude models older than Firehose (2025-09-05)
+        if info.get('date', '9999-99-99') < '2025-09-05':
             continue
 
-        # Check compatibility (only show v0.10.1+ compatible models)
-        is_compatible, _ = check_model_compatibility(info, ModelType.DRIVING)
-        if not is_compatible:
+        # FILTER 2: Skip reverted models
+        if 'revert' in model_id.lower() or 'revert' in info.get('name', '').lower():
             continue
 
         new_driving.append({
@@ -364,7 +363,7 @@ def check_updates():
         if model_id in installed_dm:
             continue
 
-        # Skip reverted models
+        # FILTER 2: Skip reverted models (DM models don't need date filter)
         if 'revert' in model_id.lower() or 'revert' in info.get('name', '').lower():
             continue
 
@@ -487,7 +486,19 @@ def add_model_from_pr(pr_number: int, model_type: str = 'driving'):
 
 
 def update_registry_from_github():
-    """Fetch latest model commits from GitHub and update registry"""
+    """Fetch latest model commits from GitHub and update registry
+
+    Three-Layer Filtering System:
+    1. Date Filter: Exclude models older than Firehose (2025-09-05) for v0.10.1+ compatibility
+    2. Revert Filter: Exclude reverted models and revert commits themselves
+       - Detects "Revert" commits and parses which commit was reverted
+       - Removes reverted models from registry
+    3. Already Downloaded Filter: Applied in check_updates() to show only uninstalled models
+
+    Note: Filter #3 is intentionally in check_updates(), not here, because the registry
+    should contain ALL available models. The check_updates() function filters what to
+    show users based on what's already installed.
+    """
 
     print("🔍 Checking GitHub for new openpilot models...")
 
@@ -495,7 +506,7 @@ def update_registry_from_github():
     github_api_url = "https://api.github.com/repos/commaai/openpilot/commits"
     params = {
         'path': 'selfdrive/modeld/models',
-        'per_page': 20  # Check last 20 commits
+        'per_page': 30  # Check last 30 commits to catch reverts
     }
 
     try:
@@ -515,9 +526,39 @@ def update_registry_from_github():
         for model_info in models_dict.values():
             existing_commits.add(model_info['commit'])
 
+    # PHASE 1: Parse all commits to find reverted commit hashes
+    import re
+    reverted_commits = set()
+
+    for commit_data in commits_data:
+        commit_message = commit_data['commit']['message']
+
+        # Check if this is a revert commit
+        if 'revert' in commit_message.lower():
+            # Parse commit message to extract reverted commit hash
+            # Format: "This reverts commit <hash>."
+            revert_match = re.search(r'reverts commit ([0-9a-f]{40})', commit_message, re.IGNORECASE)
+            if revert_match:
+                reverted_hash = revert_match.group(1)
+                reverted_commits.add(reverted_hash)
+                print(f"  🔍 Found revert: {reverted_hash[:12]} was reverted")
+
+    # PHASE 2: Remove reverted models from registry
+    models_removed = 0
+    for registry_key in ['driving_models', 'dm_models']:
+        models_to_remove = []
+        for model_id, model_info in registry[registry_key].items():
+            if model_info['commit'] in reverted_commits:
+                models_to_remove.append(model_id)
+                print(f"  🗑️  Removing reverted model: {model_id} (commit {model_info['commit'][:12]})")
+
+        for model_id in models_to_remove:
+            del registry[registry_key][model_id]
+            models_removed += 1
+
     new_models_added = 0
 
-    # Parse commits for model updates
+    # PHASE 3: Parse commits for new model updates
     for commit_data in commits_data:
         commit_hash = commit_data['sha']
         commit_hash_short = commit_hash[:7]
@@ -526,6 +567,20 @@ def update_registry_from_github():
 
         # Skip if already in registry
         if commit_hash in existing_commits:
+            continue
+
+        # FILTER 1: Exclude models older than Firehose model (2025-09-05)
+        # Only include models from Firehose onwards for v0.10.1+ compatibility
+        if commit_date < "2025-09-05":
+            continue
+
+        # FILTER 2a: Exclude revert commits themselves
+        # Skip any commit with "revert" in the message (case-insensitive)
+        if 'revert' in commit_message.lower():
+            continue
+
+        # FILTER 2b: Exclude commits that were later reverted
+        if commit_hash in reverted_commits:
             continue
 
         # Parse commit message for model info
@@ -580,7 +635,7 @@ def update_registry_from_github():
         print(f"   PR: {pr_number}")
         print()
 
-    if new_models_added > 0:
+    if new_models_added > 0 or models_removed > 0:
         # Update last_updated timestamp
         registry['last_updated'] = datetime.now().strftime('%Y-%m-%d')
 
@@ -588,10 +643,13 @@ def update_registry_from_github():
         with open(REGISTRY_FILE, 'w') as f:
             json.dump(registry, f, indent=2)
 
-        print(f"✅ Added {new_models_added} new model(s) to registry")
+        if new_models_added > 0:
+            print(f"✅ Added {new_models_added} new model(s) to registry")
+        if models_removed > 0:
+            print(f"🗑️  Removed {models_removed} reverted model(s) from registry")
         print(f"📄 Registry updated: {REGISTRY_FILE}")
     else:
-        print("✅ Registry is up to date - no new models found")
+        print("✅ Registry is up to date - no new models found, no reverted models detected")
 
     return 0
 
