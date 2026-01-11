@@ -1,6 +1,9 @@
 #include "selfdrive/ui/qt/widgets/controls.h"
 
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QPainter>
+#include <QPushButton>
 #include <QStyleOption>
 
 AbstractControl::AbstractControl(const QString &title, const QString &desc, const QString &icon, QWidget *parent) : QFrame(parent) {
@@ -85,6 +88,81 @@ ButtonControl::ButtonControl(const QString &title, const QString &text, const QS
   btn.setFixedSize(250, 100);
   QObject::connect(&btn, &QPushButton::clicked, this, &ButtonControl::clicked);
   hlayout->addWidget(&btn);
+}
+
+LateralDelayEstimation::LateralDelayEstimation(QWidget *parent) : QFrame(parent) {
+  QHBoxLayout *main_layout = new QHBoxLayout(this);
+  main_layout->setMargin(0);
+  main_layout->setSpacing(20);
+
+  title_label = new QLabel(tr("Lateral Delay Estimation"), this);
+  title_label->setFixedHeight(120);
+  title_label->setStyleSheet("QLabel { font-size: 50px; font-weight: 400; }");
+  title_label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  main_layout->addWidget(title_label, 1);
+
+  value_label = new QLabel(tr("in progress"), this);
+  value_label->setStyleSheet("QLabel { font-size: 45px; color: #C9C9C9; }");
+  value_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  value_label->setWordWrap(true);
+  main_layout->addWidget(value_label, 1);
+
+  reset_btn = new QPushButton(tr("RESET"), this);
+  reset_btn->setFixedSize(400, 100);
+  reset_btn->setStyleSheet(R"(
+    QPushButton {
+      background-color: #465BEA;
+      color: white;
+      border-radius: 10px;
+      font-size: 40px;
+      font-weight: 500;
+    }
+    QPushButton:pressed {
+      background-color: #3049F4;
+    }
+  )");
+  reset_btn->setVisible(false);
+  connect(reset_btn, &QPushButton::clicked, this, &LateralDelayEstimation::resetClicked);
+  main_layout->addWidget(reset_btn);
+}
+
+void LateralDelayEstimation::updateStatus(int status, int cal_perc, int valid_blocks, float delay_estimate, float delay_std, float current_delay) {
+  switch(status) {
+    case 0:  // unestimated / learning
+      if (cal_perc > 0) {
+        value_label->setText(QString(tr("in progress (%1%, %2/%3 blocks)"))
+          .arg(cal_perc)
+          .arg(valid_blocks)
+          .arg(10));
+      } else {
+        value_label->setText(tr("in progress"));
+      }
+      value_label->setStyleSheet("QLabel { font-size: 45px; color: #C9C9C9; }");
+      reset_btn->setVisible(false);
+      break;
+    case 1: {  // estimated
+      QString value_text = QString("%1 s").arg(delay_estimate, 0, 'f', 3);
+      float lateral_delay_diff = std::abs(current_delay - delay_estimate);
+      if (lateral_delay_diff < 0.05) {  // Activated
+        value_label->setText(QString("<font color='#5CB85C'>%1</font>").arg(value_text));
+      } else {
+        QString std_text = QString("± %1 s").arg(delay_std, 0, 'f', 3);
+        value_label->setText(QString("<font color='#DAB825'>%1 (std: %2)</font>").arg(value_text).arg(std_text));
+      }
+      value_label->setStyleSheet("QLabel { font-size: 45px; }");
+      reset_btn->setVisible(true);
+      break;
+    }
+    case 2:  // invalid
+      value_label->setText(QString("<font color='#E22C2C'>Invalid</font>"));
+      value_label->setStyleSheet("QLabel { font-size: 45px; }");
+      reset_btn->setVisible(true);
+      break;
+    default:
+      value_label->setText("");
+      value_label->setStyleSheet("QLabel { font-size: 45px; color: #C9C9C9; }");
+      reset_btn->setVisible(false);
+  }
 }
 
 // ElidedLabel
