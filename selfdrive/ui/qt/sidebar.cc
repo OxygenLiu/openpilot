@@ -99,6 +99,9 @@ void Sidebar::updateState(const UIState &s) {
       QObject::connect(networking, &Networking::connectivityChanged, this, &Sidebar::updateConnectivity);
       signal_connected = true;
     }
+
+    // Trigger on-demand GitHub connectivity check when sidebar updates
+    networking->checkConnectivity();
   }
   bool tethering_on = networking && networking->wifi->tethering_on;
   auto deviceState = sm["deviceState"].getDeviceState();
@@ -106,14 +109,30 @@ void Sidebar::updateState(const UIState &s) {
   int strength = tethering_on ? 4 : (int)deviceState.getNetworkStrength();
   setProperty("netStrength", strength > 0 ? strength + 1 : 0);
 
+  // Combined Athena + GitHub connectivity status (worst case wins)
   ItemStatus connectStatus;
   auto last_ping = deviceState.getLastAthenaPingTime();
+  bool athena_online = false;
+  bool athena_error = false;
+
   if (last_ping == 0) {
+    athena_online = false;  // Never connected
+  } else if (nanos_since_boot() - last_ping < 80e9) {
+    athena_online = true;   // Connected within 80s
+  } else {
+    athena_error = true;    // Timeout - ERROR state
+  }
+
+  // Combined status: ERROR > OFFLINE > ONLINE
+  if (athena_error) {
+    // ERROR takes precedence (Athena timeout)
+    connectStatus = ItemStatus{{tr("CONNECT"), tr("ERROR")}, danger_color};
+  } else if (!athena_online || !internet_connected) {
+    // Either Athena or GitHub offline
     connectStatus = ItemStatus{{tr("CONNECT"), tr("OFFLINE")}, warning_color};
   } else {
-    connectStatus = nanos_since_boot() - last_ping < 80e9
-                        ? ItemStatus{{tr("CONNECT"), tr("ONLINE")}, good_color}
-                        : ItemStatus{{tr("CONNECT"), tr("ERROR")}, danger_color};
+    // Both online
+    connectStatus = ItemStatus{{tr("CONNECT"), tr("ONLINE")}, good_color};
   }
   setProperty("connectStatus", QVariant::fromValue(connectStatus));
 
@@ -187,13 +206,7 @@ void Sidebar::paintEvent(QPaintEvent *event) {
   }
 
   p.setFont(InterFont(35));
-
-  // Set Wi-Fi text color based on GitHub connectivity
-  if (net_type == tr("Wi-Fi")) {
-    p.setPen(internet_connected ? QColor(0x4C, 0xAF, 0x50) : QColor(0xF4, 0x43, 0x36));  // Green or Red
-  } else {
-    p.setPen(QColor(0xff, 0xff, 0xff));  // White for other network types
-  }
+  p.setPen(QColor(0xff, 0xff, 0xff));
 
   const QRect r = QRect(58, 247, width() - 100, 50);
 

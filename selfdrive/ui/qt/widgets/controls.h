@@ -95,6 +95,23 @@ private:
   ElidedLabel label;
 };
 
+class LateralDelayEstimation : public QFrame {
+  Q_OBJECT
+
+public:
+  explicit LateralDelayEstimation(QWidget *parent = nullptr);
+
+  void updateStatus(int status, int cal_perc, int valid_blocks, float delay_estimate, float delay_std, float current_delay);
+
+signals:
+  void resetClicked();
+
+private:
+  QLabel *title_label;
+  QLabel *value_label;
+  QPushButton *reset_btn;
+};
+
 // widget for a button with a label
 class ButtonControl : public AbstractControl {
   Q_OBJECT
