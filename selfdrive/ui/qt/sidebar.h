@@ -54,7 +54,7 @@ protected:
   const QRect settings_btn = QRect(50, 35, 200, 117);
   const QRect mic_indicator_btn = QRect(158, 252, 75, 40);
   const QRect bmw_diagnostic_btn = QRect(30, 496, 240, 126);  // VEHICLE metric area
-  const QColor good_color = QColor(255, 255, 255);
+  const QColor good_color = QColor(0x4C, 0xAF, 0x50);  // Green for healthy status
   const QColor warning_color = QColor(218, 202, 37);
   const QColor danger_color = QColor(201, 34, 49);
 

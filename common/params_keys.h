@@ -89,6 +89,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ModelUpdateResults", {CLEAR_ON_MANAGER_START, JSON}},
     {"ModelUpdateError", {CLEAR_ON_MANAGER_START, STRING}},
     {"NetworkMetered", {PERSISTENT, BOOL}},
+    {"NetworkProxyEnabled", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"NetworkProxyUrl", {PERSISTENT, STRING, "socks://172.20.10.1:7890"}},
     {"NormalModeSpeed", {PERSISTENT, INT}},
     {"ObdMultiplexingChanged", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
     {"ObdMultiplexingEnabled", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
