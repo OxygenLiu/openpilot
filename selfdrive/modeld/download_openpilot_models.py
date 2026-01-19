@@ -534,7 +534,7 @@ def update_registry_from_github():
         commit_message = commit_data['commit']['message']
 
         # Check if this is a revert commit
-        if 'revert' in commit_message.lower():
+        if commit_message.split('\n')[0].lower().startswith('revert'):
             # Parse commit message to extract reverted commit hash
             # Format: "This reverts commit <hash>."
             revert_match = re.search(r'reverts commit ([0-9a-f]{40})', commit_message, re.IGNORECASE)
@@ -575,8 +575,8 @@ def update_registry_from_github():
             continue
 
         # FILTER 2a: Exclude revert commits themselves
-        # Skip any commit with "revert" in the message (case-insensitive)
-        if 'revert' in commit_message.lower():
+        # Only skip commits that ARE revert commits (title starts with "Revert")
+        if commit_message.split('\n')[0].lower().startswith('revert'):
             continue
 
         # FILTER 2b: Exclude commits that were later reverted
