@@ -20,11 +20,11 @@ from openpilot.common.pid import PIDController
 # Additionally, there is friction in the steering wheel that needs
 # to be overcome to move it at all, this is compensated for too.
 
-KP = 1.0
-KI = 0.3
-KD = 0.0
-INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
-KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
+KP = 0.6
+#KI = 0.3
+#KD = 0.0
+INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 30, 40]
+KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 1.0, KP, KP]
 
 LP_FILTER_CUTOFF_HZ = 1.2
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
