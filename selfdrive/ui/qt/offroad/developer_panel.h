@@ -11,7 +11,6 @@ public:
 
 private slots:
   void updateToggles(bool _offroad);
-  void openLateralDelayDetails();
   void updateState(const UIState &s);
 
 private:
@@ -20,9 +19,9 @@ private:
   ParamControl* joystickToggle;
   ParamControl* longManeuverToggle;
   ParamControl* dccCalibrationToggle;
+  ParamControl* laneCenteringCorrectionToggle;
   ParamControl* experimentalLongitudinalToggle;
   LabelControl *lateral_delay_lbl;
-  ButtonControl *lateral_delay_details_btn;
   bool is_release;
   bool offroad = false;
 };
