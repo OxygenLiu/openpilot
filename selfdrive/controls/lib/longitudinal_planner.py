@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 import cereal.messaging as messaging
-from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX, LAT_ACCEL_LIMIT, A_TOTAL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
@@ -22,11 +22,6 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
 
-# Lookup table for turns
-_A_TOTAL_MAX_V = [1.7, 3.2]
-_A_TOTAL_MAX_BP = [20., 40.]
-
-
 def get_max_accel(v_ego):
   return np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS)
 
@@ -34,16 +29,21 @@ def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
 
 
-def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
+def limit_accel_in_turns(v_ego, curvature, a_target):
   """
-  This function returns a limited long acceleration allowed, depending on the existing lateral acceleration
-  this should avoid accelerating when losing the target in turns
+  Limit longitudinal acceleration based on friction circle constraint.
+
+  Physics: Total tire grip is limited by friction: √(a_x² + a_y²) ≤ μg
+  Using conservative μ = 0.4 gives A_TOTAL_MAX = 4.0 m/s²
+  Therefore: a_x_allowed = √(A_TOTAL_MAX² - a_y²)
+
+  Args:
+    v_ego: Vehicle speed [m/s]
+    curvature: Path curvature from controlsState [1/m]
+    a_target: Current acceleration limits [min, max]
   """
-  # FIXME: This function to calculate lateral accel is incorrect and should use the VehicleModel
-  # The lookup table for turns should also be updated if we do this
-  a_total_max = np.interp(v_ego, _A_TOTAL_MAX_BP, _A_TOTAL_MAX_V)
-  a_y = v_ego ** 2 * angle_steers * CV.DEG_TO_RAD / (CP.steerRatio * CP.wheelbase)
-  a_x_allowed = math.sqrt(max(a_total_max ** 2 - a_y ** 2, 0.))
+  a_y = v_ego ** 2 * curvature
+  a_x_allowed = math.sqrt(max(A_TOTAL_MAX ** 2 - a_y ** 2, 0.))
 
   return [a_target[0], min(a_target[1], a_x_allowed)]
 
@@ -64,11 +64,18 @@ class LongitudinalPlanner:
     self.output_v_target = init_v
     self.output_a_target = 0.0
     self.output_should_stop = False
-
+    self.curvature_limited = False
     self.v_desired_trajectory = np.zeros(CONTROL_N)
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
     self.solverExecutionTime = 0.0
+
+    # Get max lateral acceleration from car's MAX_LAT_ACCEL_MEASURED (for speed control in curves)
+    if self.CP.lateralTuning.which() == 'torque':
+      self.max_lat_accel = self.CP.maxLateralAccel
+    else:
+      self.max_lat_accel = LAT_ACCEL_LIMIT
+
 
   @staticmethod
   def parse_model(model_msg):
@@ -116,8 +123,9 @@ class LongitudinalPlanner:
 
     if mode == 'acc':
       accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
-      steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
-      accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
+      # Use curvature from controlsState (calculated by VehicleModel with variable steer ratio)
+      curvature = sm['controlsState'].curvature
+      accel_clip = limit_accel_in_turns(v_ego, curvature, accel_clip)
     else:
       accel_clip = [ACCEL_MIN, ACCEL_MAX]
 
@@ -158,9 +166,17 @@ class LongitudinalPlanner:
     self.a_desired = float(np.interp(self.dt, CONTROL_N_T_IDX, self.a_desired_trajectory))
     self.v_desired_filter.x = self.v_desired_filter.x + self.dt * (self.a_desired + a_prev) / 2.0
 
-    action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
-    output_v_target_mpc, output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
-                                                                        action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
+    action_t = self.CP.longitudinalActuatorDelay + DT_MDL
+
+    output_v_target_mpc, output_a_target_mpc, output_should_stop_mpc, self.curvature_limited = get_accel_from_plan(
+      self.v_desired_trajectory,
+      self.a_desired_trajectory,
+      CONTROL_N_T_IDX,
+      action_t,
+      self.CP.vEgoStopping,
+      sm['modelV2'].action.desiredCurvature,
+      self.max_lat_accel,
+    )
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
@@ -198,6 +214,7 @@ class LongitudinalPlanner:
 
     longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.aTarget = float(self.output_a_target)
+    longitudinalPlan.curvatureSpeedLimited = self.curvature_limited and sm['selfdriveState'].enabled
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)

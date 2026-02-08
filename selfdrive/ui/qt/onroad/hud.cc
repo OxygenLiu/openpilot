@@ -22,6 +22,10 @@ void HudRenderer::updateState(const UIState &s) {
 
   const auto &controls_state = sm["controlsState"].getControlsState();
   const auto &car_state = sm["carState"].getCarState();
+  const auto &longitudinal_plan = sm["longitudinalPlan"].getLongitudinalPlan();
+
+  // Get curvature speed limiting status
+  curvature_speed_limited = longitudinal_plan.getCurvatureSpeedLimited();
 
   // Handle older routes where vCruiseCluster is not set
   set_speed = car_state.getVCruiseCluster() == 0.0 ? controls_state.getVCruiseDEPRECATED() : car_state.getVCruiseCluster();
@@ -113,11 +117,18 @@ void HudRenderer::drawSetSpeed(QPainter &p, const QRect &surface_rect) {
 void HudRenderer::drawCurrentSpeed(QPainter &p, const QRect &surface_rect) {
   QString speedStr = QString::number(std::nearbyint(speed));
 
+  // Set color based on curvature speed limiting status
+  QColor speed_color = curvature_speed_limited ? QColor(255, 255, 0, 255) : QColor(255, 255, 255, 255);
+
   p.setFont(InterFont(176, QFont::Bold));
-  drawText(p, surface_rect.center().x(), 210, speedStr);
+  QRect speed_rect = p.fontMetrics().boundingRect(speedStr);
+  speed_rect.moveCenter({surface_rect.center().x(), 210 - speed_rect.height() / 2});
+  p.setPen(speed_color);
+  p.drawText(speed_rect.x(), speed_rect.bottom(), speedStr);
 
   p.setFont(InterFont(66));
-  drawText(p, surface_rect.center().x(), 290, is_metric ? tr("km/h") : tr("mph"), 200);
+  QString unit_str = is_metric ? tr("km/h") : tr("mph");
+  drawText(p, surface_rect.center().x(), 290, unit_str, 200);
 }
 
 void HudRenderer::drawText(QPainter &p, int x, int y, const QString &text, int alpha) {

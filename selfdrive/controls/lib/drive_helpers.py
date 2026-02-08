@@ -1,6 +1,8 @@
+import math
 import numpy as np
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.realtime import DT_CTRL, DT_MDL
+from opendbc.car.interfaces import MAX_LATERAL_ACCEL_NO_ROLL, MAX_LATERAL_JERK
 
 MIN_SPEED = 1.0
 CONTROL_N = 17
@@ -9,9 +11,9 @@ CAR_ROTATION_RADIUS = 0.0
 MAX_CURVATURE = 0.2
 MAX_VEL_ERR = 5.0  # m/s
 
-# EU guidelines
-MAX_LATERAL_JERK = 5.0  # m/s^3
-MAX_LATERAL_ACCEL_NO_ROLL = 3.0  # m/s^2
+# v7: Both lane centering and speed limiting use idx=0 (current values)
+# This avoids aggregated model prediction errors at future indices
+# The model's desiredCurvature already accounts for future path planning
 
 
 def clamp(val, min_val, max_val):
@@ -39,20 +41,33 @@ def clip_curvature(v_ego, prev_curvature, new_curvature, roll) -> tuple[float, b
   return float(new_curvature), limited_accel or limited_max_curv
 
 
-def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.05):
+def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.05,
+                        desiredCurvature=0.0, max_lat_accel=0.0):
+  curvature_limited = False
   if len(speeds) == len(t_idxs):
     v_now = speeds[0]
     a_now = accels[0]
+
     v_target = np.interp(action_t, t_idxs, speeds)
     a_target = 2 * (v_target - v_now) / (action_t) - a_now
     v_target_1sec = np.interp(action_t + 1.0, t_idxs, speeds)
+
+    # Limit v_target if lateral acceleration would exceed max_lat_accel
+    # Predicts lat accel if car maintains v_now through desiredCurvature (at ~0.7s)
+    # Physics: a_lat = v² × curvature, v_max = sqrt(max_lat_accel / curvature)
+    if max_lat_accel > 0.0 and desiredCurvature != 0.0:
+      a_lat_predicted = v_now ** 2 * abs(desiredCurvature)
+      if a_lat_predicted > max_lat_accel:
+        v_target = math.sqrt(max_lat_accel / abs(desiredCurvature))
+        a_target = 2 * (v_target - v_now) / action_t - a_now
+        curvature_limited = True
   else:
     v_target = 0.0
     v_target_1sec = 0.0
     a_target = 0.0
   should_stop = (v_target < vEgoStopping and
                  v_target_1sec < vEgoStopping)
-  return v_target, a_target, should_stop
+  return v_target, a_target, should_stop, curvature_limited
 
 def curv_from_psis(psi_target, psi_rate, vego, action_t):
   vego = np.clip(vego, MIN_SPEED, np.inf)

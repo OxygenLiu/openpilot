@@ -24,6 +24,7 @@ private:
   bool is_metric = false;
   bool v_ego_cluster_seen = false;
   int status = STATUS_DISENGAGED;
+  bool curvature_speed_limited = false;
 
   // BMW vitals
   float bmw_coolant_temp = 0.0;
