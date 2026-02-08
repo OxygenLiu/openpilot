@@ -35,7 +35,10 @@ public:
     return it->second;
   }
 
-  static int get_voltage() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/in1_input").c_str()); }
+  // Add 1400mV offset to compensate for harness voltage drop (protection diodes)
+  // Without this offset, C3 reads ~1.4V lower than actual battery voltage,
+  // causing unwanted low-voltage shutdowns when battery is actually fine
+  static int get_voltage() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/in1_input").c_str()) + 1400; }
   static int get_current() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/curr1_input").c_str()); }
 
   static std::string get_serial() {
