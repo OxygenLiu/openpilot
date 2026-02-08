@@ -20,9 +20,9 @@ from openpilot.common.pid import PIDController
 # Additionally, there is friction in the steering wheel that needs
 # to be overcome to move it at all, this is compensated for too.
 
-KP = 0.6
-#KI = 0.3
-#KD = 0.0
+KP = 0.8
+# KI = 0.3
+# KD = 0.0
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 30, 40]
 KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 1.0, KP, KP]
 
@@ -37,7 +37,6 @@ class LatControlTorque(LatControl):
     self.torque_params = CP.lateralTuning.torque.as_builder()
     self.torque_from_lateral_accel = CI.torque_from_lateral_accel()
     self.lateral_accel_from_torque = CI.lateral_accel_from_torque()
-    #self.pid = PIDController([INTERP_SPEEDS, KP_INTERP], KI, KD, rate=1/self.dt)
     self.pid = PIDController([INTERP_SPEEDS, KP_INTERP],
                              self.torque_params.ki, self.torque_params.kd, rate=1/self.dt)
     self.update_limits()
