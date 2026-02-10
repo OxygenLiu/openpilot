@@ -11,9 +11,8 @@ CAR_ROTATION_RADIUS = 0.0
 MAX_CURVATURE = 0.2
 MAX_VEL_ERR = 5.0  # m/s
 
-# v7: Both lane centering and speed limiting use idx=0 (current values)
-# This avoids aggregated model prediction errors at future indices
-# The model's desiredCurvature already accounts for future path planning
+# Curve speed limiter uses max curvature across current idx, +2 and +4 model steps
+# to anticipate upcoming curves and slow down proactively
 
 
 def clamp(val, min_val, max_val):
@@ -53,7 +52,7 @@ def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.
     v_target_1sec = np.interp(action_t + 1.0, t_idxs, speeds)
 
     # Limit v_target if lateral acceleration would exceed max_lat_accel
-    # Predicts lat accel if car maintains v_now through desiredCurvature (at ~0.7s)
+    # desiredCurvature is max of current idx, +2 and +4 model steps (computed in planner)
     # Physics: a_lat = v² × curvature, v_max = sqrt(max_lat_accel / curvature)
     if max_lat_accel > 0.0 and desiredCurvature != 0.0:
       a_lat_predicted = v_now ** 2 * abs(desiredCurvature)
