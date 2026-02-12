@@ -40,14 +40,36 @@ class DesireHelper:
     self.prev_one_blinker = False
     self.desire = log.Desire.none
 
+    # Consecutive lane change support: only discrete steering button, not gas pedal.
+    # Gas pedal is continuous and release/re-press during normal driving could
+    # accidentally trigger consecutive lane changes.
+    self.prev_steering_button = False
+    self.consecutive_lane_change_requested = False
+    self.consecutive_desire_gap = 0
+
   def update(self, carstate, lateral_active, lane_change_prob):
     v_ego = carstate.vEgo
     one_blinker = carstate.leftBlinker != carstate.rightBlinker
     below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN
 
-    if not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX:
+    # Consecutive lane change uses only the discrete steering button (not gas pedal)
+    steering_button = carstate.steeringPressed and not carstate.gasPressed
+    steering_button_rising_edge = steering_button and not self.prev_steering_button
+
+    # Handle consecutive desire gap: 1 frame of desire=none to create rising edge for model
+    if self.consecutive_desire_gap > 0:
+      self.consecutive_desire_gap -= 1
+      if self.consecutive_desire_gap == 0:
+        # Gap complete, start the next consecutive lane change
+        self.lane_change_state = LaneChangeState.laneChangeStarting
+        self.lane_change_ll_prob = 1.0
+        self.lane_change_timer = 0.0
+        self.consecutive_lane_change_requested = False
+
+    elif not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX:
       self.lane_change_state = LaneChangeState.off
       self.lane_change_direction = LaneChangeDirection.none
+      self.consecutive_lane_change_requested = False
     else:
       # LaneChangeState.off
       if self.lane_change_state == LaneChangeState.off and one_blinker and not self.prev_one_blinker and not below_lane_change_speed:
@@ -78,21 +100,36 @@ class DesireHelper:
         # fade out over .5s
         self.lane_change_ll_prob = max(self.lane_change_ll_prob - 2 * DT_MDL, 0.0)
 
-        # 98% certainty
-        if lane_change_prob < 0.02 and self.lane_change_ll_prob < 0.01:
+        # Detect consecutive lane change request during active lane change
+        if steering_button_rising_edge and one_blinker:
+          self.consecutive_lane_change_requested = True
+
+        if self.consecutive_lane_change_requested and one_blinker and not below_lane_change_speed \
+            and self.lane_change_ll_prob < 0.01:
+          # Consecutive: re-trigger as soon as car is committed (ll_prob faded, ~0.5s in).
+          # Don't wait for model completion — model re-plans from current position
+          # for a fluid multi-lane merge without yaw correction in the middle lane.
+          self.consecutive_desire_gap = 1
+        elif lane_change_prob < 0.02 and self.lane_change_ll_prob < 0.01:
+          # Normal: wait for model to confirm lane change is complete
           self.lane_change_state = LaneChangeState.laneChangeFinishing
 
       # LaneChangeState.laneChangeFinishing
       elif self.lane_change_state == LaneChangeState.laneChangeFinishing:
-        # fade in laneline over 1s
-        self.lane_change_ll_prob = min(self.lane_change_ll_prob + DT_MDL, 1.0)
+        # Detect consecutive lane change request during finishing
+        if steering_button_rising_edge and one_blinker and not below_lane_change_speed:
+          # Skip remaining fade-in, start desire gap for next lane change
+          self.consecutive_desire_gap = 1
+        else:
+          # fade in laneline over 1s
+          self.lane_change_ll_prob = min(self.lane_change_ll_prob + DT_MDL, 1.0)
 
-        if self.lane_change_ll_prob > 0.99:
-          self.lane_change_direction = LaneChangeDirection.none
-          if one_blinker:
-            self.lane_change_state = LaneChangeState.preLaneChange
-          else:
-            self.lane_change_state = LaneChangeState.off
+          if self.lane_change_ll_prob > 0.99:
+            self.lane_change_direction = LaneChangeDirection.none
+            if one_blinker:
+              self.lane_change_state = LaneChangeState.preLaneChange
+            else:
+              self.lane_change_state = LaneChangeState.off
 
     if self.lane_change_state in (LaneChangeState.off, LaneChangeState.preLaneChange):
       self.lane_change_timer = 0.0
@@ -100,8 +137,13 @@ class DesireHelper:
       self.lane_change_timer += DT_MDL
 
     self.prev_one_blinker = one_blinker
+    self.prev_steering_button = steering_button
 
     self.desire = DESIRES[self.lane_change_direction][self.lane_change_state]
+
+    # Override desire to none during consecutive gap for model rising edge
+    if self.consecutive_desire_gap > 0:
+      self.desire = log.Desire.none
 
     # Send keep pulse once per second during LaneChangeStart.preLaneChange
     if self.lane_change_state in (LaneChangeState.off, LaneChangeState.laneChangeStarting):
