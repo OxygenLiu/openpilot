@@ -22,8 +22,12 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
 
-# Speed limit rate limiter: max 5 km/h/s decrease rate
-SPEED_LIMIT_DECREASE_RATE = 5.0 / 3.6  # m/s per second
+# Speed limit offset: lower limits tolerate larger offsets, higher limits must stay tight
+# Based on China traffic enforcement practice — limits are always multiples of 10 km/h
+SPEED_LIMIT_OFFSET = {  # speed limit (km/h) → offset (km/h)
+  20: 20, 30: 20, 40: 20, 50: 20, 60: 20,
+  70: 10, 80: 10, 90: 10, 100: 10, 110: 10, 120: 10,
+}
 
 def get_max_accel(v_ego):
   return np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS)
@@ -114,12 +118,14 @@ class LongitudinalPlanner:
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
 
-    # Apply confirmed speed limit — clamp v_cruise down (never auto-increase)
+    # Apply confirmed speed limit with enforcement-aware offset
+    # Lower limits allow larger offsets; higher limits stay tight to avoid tickets
     self.speed_limit_active = False
     if sm.valid.get('speedLimitState', False) or sm.recv_frame.get('speedLimitState', 0) > 0:
       sls = sm['speedLimitState']
       if sls.confirmed and sls.speedLimit > 0:
-        v_limit = sls.speedLimit * CV.KPH_TO_MS
+        offset_kph = SPEED_LIMIT_OFFSET.get(round(sls.speedLimit / 10) * 10, 10)
+        v_limit = (sls.speedLimit + offset_kph) * CV.KPH_TO_MS
         if v_limit < v_cruise:
           v_cruise = v_limit
           self.speed_limit_active = True
