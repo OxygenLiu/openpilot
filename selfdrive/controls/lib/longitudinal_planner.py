@@ -22,6 +22,9 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
 
+# Speed limit rate limiter: max 5 km/h/s decrease rate
+SPEED_LIMIT_DECREASE_RATE = 5.0 / 3.6  # m/s per second
+
 def get_max_accel(v_ego):
   return np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS)
 
@@ -69,6 +72,7 @@ class LongitudinalPlanner:
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
     self.solverExecutionTime = 0.0
+    self.speed_limit_active = False
 
     # Get max lateral acceleration from car's MAX_LAT_ACCEL_MEASURED (for speed control in curves)
     if self.CP.lateralTuning.which() == 'torque':
@@ -109,6 +113,16 @@ class LongitudinalPlanner:
     v_cruise_kph = min(sm['carState'].vCruise, V_CRUISE_MAX)
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
+
+    # Apply confirmed speed limit — clamp v_cruise down (never auto-increase)
+    self.speed_limit_active = False
+    if sm.valid.get('speedLimitState', False) or sm.recv_frame.get('speedLimitState', 0) > 0:
+      sls = sm['speedLimitState']
+      if sls.confirmed and sls.speedLimit > 0:
+        v_limit = sls.speedLimit * CV.KPH_TO_MS
+        if v_limit < v_cruise:
+          v_cruise = v_limit
+          self.speed_limit_active = True
 
     long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
     force_slow_decel = sm['controlsState'].forceDecel

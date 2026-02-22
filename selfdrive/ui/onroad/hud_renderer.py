@@ -1,6 +1,8 @@
+import math
 import pyray as rl
 from dataclasses import dataclass
 from openpilot.common.constants import CV
+from openpilot.common.params import Params
 from openpilot.selfdrive.ui.onroad.exp_button import ExpButton
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -11,6 +13,14 @@ from openpilot.system.ui.widgets import Widget
 SET_SPEED_NA = 255
 KM_TO_MILE = 0.621371
 CRUISE_DISABLED_CHAR = '–'
+
+# Speed limit sign config
+SPEED_SIGN_RADIUS = 60  # px
+SPEED_SIGN_BORDER = 8   # red ring thickness
+SPEED_SIGN_X = 120      # center x (below MAX box)
+SPEED_SIGN_Y = 330      # center y
+SPEED_SIGN_FONT_SIZE = 56
+SOURCE_LABELS = {0: "OSM", 1: "SIGN", 2: "~"}
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,18 @@ class HudRenderer(Widget):
 
     self._exp_button = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
 
+    # Speed limit sign state
+    self._params = Params()
+    self._speed_limit: float = 0.0
+    self._speed_limit_source: int = 2  # roadTypeInference default
+    self._speed_limit_confirmed: bool = False
+    self._speed_limit_rect = rl.Rectangle(
+      SPEED_SIGN_X - SPEED_SIGN_RADIUS,
+      SPEED_SIGN_Y - SPEED_SIGN_RADIUS,
+      SPEED_SIGN_RADIUS * 2,
+      SPEED_SIGN_RADIUS * 2,
+    )
+
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
     sm = ui_state.sm
@@ -99,6 +121,13 @@ class HudRenderer(Widget):
     speed_conversion = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
     self.speed = max(0.0, v_ego * speed_conversion)
 
+    # Speed limit state
+    if sm.recv_frame.get("speedLimitState", 0) > 0:
+      sls = sm['speedLimitState']
+      self._speed_limit = sls.speedLimit
+      self._speed_limit_source = sls.source.raw if hasattr(sls.source, 'raw') else int(sls.source)
+      self._speed_limit_confirmed = sls.confirmed
+
   def _render(self, rect: rl.Rectangle) -> None:
     """Render HUD elements to the screen."""
     # Draw the header background
@@ -116,11 +145,28 @@ class HudRenderer(Widget):
 
     self._draw_current_speed(rect)
 
+    if self._speed_limit > 0:
+      self._draw_speed_limit_sign(rect)
+
     button_x = rect.x + rect.width - UI_CONFIG.border_size - UI_CONFIG.button_size
     button_y = rect.y + UI_CONFIG.border_size
     self._exp_button.render(rl.Rectangle(button_x, button_y, UI_CONFIG.button_size, UI_CONFIG.button_size))
 
   def handle_mouse_event(self) -> bool:
+    # Speed limit sign tap — toggle confirmation
+    if self._speed_limit > 0:
+      mouse_pos = rl.get_mouse_position()
+      # Circle collision: check distance from center
+      dx = mouse_pos.x - SPEED_SIGN_X
+      dy = mouse_pos.y - SPEED_SIGN_Y
+      if math.sqrt(dx * dx + dy * dy) <= SPEED_SIGN_RADIUS:
+        if rl.is_mouse_button_released(rl.MouseButton.MOUSE_BUTTON_LEFT):
+          new_confirmed = not self._speed_limit_confirmed
+          self._speed_limit_confirmed = new_confirmed
+          self._params.put("SpeedLimitConfirmed", "1" if new_confirmed else "0")
+          self._params.put("SpeedLimitValue", str(self._speed_limit))
+        return True
+
     return bool(self._exp_button.handle_mouse_event())
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
@@ -177,3 +223,48 @@ class HudRenderer(Widget):
     unit_text_size = measure_text_cached(self._font_medium, unit_text, FONT_SIZES.speed_unit)
     unit_pos = rl.Vector2(rect.x + rect.width / 2 - unit_text_size.x / 2, 290 - unit_text_size.y / 2)
     rl.draw_text_ex(self._font_medium, unit_text, unit_pos, FONT_SIZES.speed_unit, 0, COLORS.white_translucent)
+
+  def _draw_speed_limit_sign(self, rect: rl.Rectangle) -> None:
+    """Draw Vienna-style speed limit sign (red circle, white fill, black number).
+
+    50% opacity when unconfirmed (suggestion), 100% when confirmed (active).
+    Small source indicator below: "OSM" / "SIGN" / "~"
+    """
+    cx = int(rect.x) + SPEED_SIGN_X
+    cy = int(rect.y) + SPEED_SIGN_Y
+    r = SPEED_SIGN_RADIUS
+    alpha = 255 if self._speed_limit_confirmed else 128
+
+    # Red outer ring
+    red_ring = rl.Color(220, 30, 30, alpha)
+    rl.draw_circle(cx, cy, r, red_ring)
+
+    # White inner fill
+    white_fill = rl.Color(255, 255, 255, alpha)
+    rl.draw_circle(cx, cy, r - SPEED_SIGN_BORDER, white_fill)
+
+    # Speed number (black)
+    speed_text = str(round(self._speed_limit))
+    text_color = rl.Color(0, 0, 0, alpha)
+    text_size = measure_text_cached(self._font_bold, speed_text, SPEED_SIGN_FONT_SIZE)
+    rl.draw_text_ex(
+      self._font_bold,
+      speed_text,
+      rl.Vector2(cx - text_size.x / 2, cy - text_size.y / 2),
+      SPEED_SIGN_FONT_SIZE,
+      0,
+      text_color,
+    )
+
+    # Source indicator below the sign
+    source_label = SOURCE_LABELS.get(self._speed_limit_source, "?")
+    source_size = measure_text_cached(self._font_medium, source_label, 28)
+    source_color = rl.Color(200, 200, 200, alpha)
+    rl.draw_text_ex(
+      self._font_medium,
+      source_label,
+      rl.Vector2(cx - source_size.x / 2, cy + r + 8),
+      28,
+      0,
+      source_color,
+    )

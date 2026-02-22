@@ -95,6 +95,12 @@ _services: dict[str, tuple] = {
   "customReservedRawData0": (True, 0.),
   "customReservedRawData1": (True, 0.),
   "customReservedRawData2": (True, 0.),
+
+  # mapd + speed limit middleware
+  "mapdOut": (True, 20., 20),
+  "mapdExtendedOut": (True, 20., 20),
+  "mapdIn": (False, 0.),
+  "speedLimitState": (True, 1., 1),
 }
 SERVICE_LIST = {name: Service(*vals) for
                 idx, (name, vals) in enumerate(_services.items())}
