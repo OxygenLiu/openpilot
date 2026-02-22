@@ -11,8 +11,6 @@ CAR_ROTATION_RADIUS = 0.0
 MAX_CURVATURE = 0.2
 MAX_VEL_ERR = 5.0  # m/s
 
-# Curve speed limiter uses max curvature across current idx, +2 and +4 model steps
-# to anticipate upcoming curves and slow down proactively
 
 
 def clamp(val, min_val, max_val):

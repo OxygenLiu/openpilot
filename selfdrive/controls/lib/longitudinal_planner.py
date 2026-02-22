@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 import cereal.messaging as messaging
-from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX, LAT_ACCEL_LIMIT, A_TOTAL_MAX
+from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX, A_TOTAL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
@@ -11,7 +11,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
-from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, get_curvature_from_plan
+from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 
@@ -71,18 +71,11 @@ class LongitudinalPlanner:
     self.output_v_target = init_v
     self.output_a_target = 0.0
     self.output_should_stop = False
-    self.curvature_limited = False
     self.v_desired_trajectory = np.zeros(CONTROL_N)
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
     self.solverExecutionTime = 0.0
     self.speed_limit_active = False
-
-    # Get max lateral acceleration from car's MAX_LAT_ACCEL_MEASURED (for speed control in curves)
-    if self.CP.lateralTuning.which() == 'torque':
-      self.max_lat_accel = self.CP.maxLateralAccel
-    else:
-      self.max_lat_accel = LAT_ACCEL_LIMIT
 
 
   @staticmethod
@@ -188,33 +181,12 @@ class LongitudinalPlanner:
 
     action_t = self.CP.longitudinalActuatorDelay + DT_MDL
 
-    # Use max curvature across current idx, +2 and +4 model steps
-    # to anticipate upcoming curves and slow down proactively
-    model = sm['modelV2']
-    curvature_now = abs(model.action.desiredCurvature)
-    orientations_z = model.orientation.z
-    orientation_rates_z = model.orientationRate.z
-    t_idxs = ModelConstants.T_IDXS
-    if len(orientations_z) == len(t_idxs) and len(orientation_rates_z) == len(t_idxs):
-      base_idx = np.searchsorted(t_idxs, action_t, side='right')
-      worst_curvature = curvature_now
-      for offset in (2, 4):
-        idx = min(base_idx + offset, len(t_idxs) - 1)
-        curv = abs(get_curvature_from_plan(orientations_z, orientation_rates_z, t_idxs, v_ego, t_idxs[idx]))
-        worst_curvature = max(worst_curvature, curv)
-    else:
-      worst_curvature = curvature_now
-    # Preserve sign for consistency (use sign of current curvature with worst magnitude)
-    signed_worst = math.copysign(worst_curvature, model.action.desiredCurvature) if model.action.desiredCurvature != 0.0 else worst_curvature
-
-    output_v_target_mpc, output_a_target_mpc, output_should_stop_mpc, self.curvature_limited = get_accel_from_plan(
+    output_v_target_mpc, output_a_target_mpc, output_should_stop_mpc, _ = get_accel_from_plan(
       self.v_desired_trajectory,
       self.a_desired_trajectory,
       CONTROL_N_T_IDX,
       action_t,
       self.CP.vEgoStopping,
-      signed_worst,
-      self.max_lat_accel,
     )
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
@@ -253,7 +225,7 @@ class LongitudinalPlanner:
 
     longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.aTarget = float(self.output_a_target)
-    longitudinalPlan.curvatureSpeedLimited = self.curvature_limited and sm['selfdriveState'].enabled
+    longitudinalPlan.curvatureSpeedLimited = False
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
