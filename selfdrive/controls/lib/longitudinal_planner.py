@@ -123,6 +123,13 @@ class LongitudinalPlanner:
           v_cruise = v_limit
           self.speed_limit_active = True
 
+    # Apply mapd suggestedSpeed (includes mapCurveSpeed + visionCurveSpeed)
+    # suggestedSpeed is in m/s, 0 means no active constraint
+    if sm.recv_frame.get('mapdOut', 0) > 0:
+      suggested = sm['mapdOut'].suggestedSpeed
+      if suggested > 0 and suggested < v_cruise:
+        v_cruise = suggested
+
     long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
     force_slow_decel = sm['controlsState'].forceDecel
 
