@@ -3,7 +3,6 @@
 #include <memory>
 #include <string>
 
-#include "cereal/messaging/messaging.h"
 #include "cereal/services.h"
 
 #include <QButtonGroup>
