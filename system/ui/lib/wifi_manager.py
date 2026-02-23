@@ -601,38 +601,75 @@ class WifiManager:
         cloudlog.warning("No WiFi device found")
         return
 
-      # returns '/' if no active AP
-      wifi_addr = DBusAddress(self._wifi_device, NM, interface=NM_WIRELESS_IFACE)
-      active_ap_path = self._router_main.send_and_get_reply(Properties(wifi_addr).get('ActiveAccessPoint')).body[0][1]
-      ap_paths = self._router_main.send_and_get_reply(new_method_call(wifi_addr, 'GetAllAccessPoints')).body[0]
+      # Use nmcli for bulk AP query — single subprocess instead of N D-Bus round-trips
+      try:
+        result = subprocess.run(
+          ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY,IN-USE', 'dev', 'wifi', 'list', '--rescan', 'no'],
+          capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+          cloudlog.warning(f"nmcli wifi list failed: {result.stderr}")
+          return self._update_networks_dbus()
+      except Exception:
+        cloudlog.exception("nmcli failed, falling back to D-Bus")
+        return self._update_networks_dbus()
 
-      aps: dict[str, list[AccessPoint]] = {}
-
-      for ap_path in ap_paths:
-        ap_addr = DBusAddress(ap_path, NM, interface=NM_ACCESS_POINT_IFACE)
-        ap_props = self._router_main.send_and_get_reply(Properties(ap_addr).get_all())
-
-        # some APs have been seen dropping off during iteration
-        if ap_props.header.message_type == MessageType.error:
-          cloudlog.warning(f"Failed to get AP properties for {ap_path}")
+      # Parse nmcli output: SSID:SIGNAL:SECURITY:IN-USE
+      aps: dict[str, list[tuple[int, bool, str]]] = {}  # ssid -> [(strength, connected, security)]
+      for line in result.stdout.strip().split('\n'):
+        if not line:
           continue
-
+        parts = line.split(':')
+        if len(parts) < 4:
+          continue
+        ssid = parts[0]
+        if not ssid:
+          continue
         try:
-          ap = AccessPoint.from_dbus(ap_props.body[0], ap_path, active_ap_path)
-          if ap.ssid == "":
-            continue
+          strength = int(parts[1])
+        except ValueError:
+          continue
+        security = parts[2]
+        in_use = parts[3].strip() == '*'
 
-          if ap.ssid not in aps:
-            aps[ap.ssid] = []
+        if ssid not in aps:
+          aps[ssid] = []
+        aps[ssid].append((strength, in_use, security))
 
-          aps[ap.ssid].append(ap)
-        except Exception:
-          # catch all for parsing errors
-          cloudlog.exception(f"Failed to parse AP properties for {ap_path}")
+      # Get known/saved connections via nmcli too
+      try:
+        saved_result = subprocess.run(
+          ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show'],
+          capture_output=True, text=True, timeout=5
+        )
+        saved_ssids = set()
+        for line in saved_result.stdout.strip().split('\n'):
+          if ':802-11-wireless' in line:
+            saved_ssids.add(line.split(':')[0])
+      except Exception:
+        saved_ssids = set()
 
-      known_connections = self._get_connections()
-      networks = [Network.from_dbus(ssid, ap_list, ssid in known_connections) for ssid, ap_list in aps.items()]
-      # sort with quantized strength to reduce jumping
+      # Build Network objects
+      networks = []
+      for ssid, ap_list in aps.items():
+        best_strength = max(s for s, _, _ in ap_list)
+        is_connected = any(c for _, c, _ in ap_list)
+        security_str = ap_list[0][2]  # use first AP's security
+        if 'WPA' in security_str or 'PSK' in security_str:
+          sec_type = SecurityType.WPA
+        elif security_str == '' or security_str == '--':
+          sec_type = SecurityType.OPEN
+        else:
+          sec_type = SecurityType.WPA
+
+        networks.append(Network(
+          ssid=ssid,
+          strength=best_strength,
+          is_connected=is_connected and ssid in saved_ssids,
+          security_type=sec_type,
+          is_saved=ssid in saved_ssids,
+        ))
+
       networks.sort(key=lambda n: (-n.is_connected, -round(n.strength / 100 * 2), n.ssid.lower()))
       self._networks = networks
 
@@ -640,6 +677,48 @@ class WifiManager:
       self._update_current_network_metered()
 
       self._enqueue_callbacks(self._networks_updated, self._networks)
+
+  def _update_networks_dbus(self):
+    """Fallback: original D-Bus based network scanning."""
+    # returns '/' if no active AP
+    wifi_addr = DBusAddress(self._wifi_device, NM, interface=NM_WIRELESS_IFACE)
+    active_ap_path = self._router_main.send_and_get_reply(Properties(wifi_addr).get('ActiveAccessPoint')).body[0][1]
+    ap_paths = self._router_main.send_and_get_reply(new_method_call(wifi_addr, 'GetAllAccessPoints')).body[0]
+
+    aps: dict[str, list[AccessPoint]] = {}
+
+    for ap_path in ap_paths:
+      ap_addr = DBusAddress(ap_path, NM, interface=NM_ACCESS_POINT_IFACE)
+      ap_props = self._router_main.send_and_get_reply(Properties(ap_addr).get_all())
+
+      # some APs have been seen dropping off during iteration
+      if ap_props.header.message_type == MessageType.error:
+        cloudlog.warning(f"Failed to get AP properties for {ap_path}")
+        continue
+
+      try:
+        ap = AccessPoint.from_dbus(ap_props.body[0], ap_path, active_ap_path)
+        if ap.ssid == "":
+          continue
+
+        if ap.ssid not in aps:
+          aps[ap.ssid] = []
+
+        aps[ap.ssid].append(ap)
+      except Exception:
+        # catch all for parsing errors
+        cloudlog.exception(f"Failed to parse AP properties for {ap_path}")
+
+    known_connections = self._get_connections()
+    networks = [Network.from_dbus(ssid, ap_list, ssid in known_connections) for ssid, ap_list in aps.items()]
+    # sort with quantized strength to reduce jumping
+    networks.sort(key=lambda n: (-n.is_connected, -round(n.strength / 100 * 2), n.ssid.lower()))
+    self._networks = networks
+
+    self._update_ipv4_address()
+    self._update_current_network_metered()
+
+    self._enqueue_callbacks(self._networks_updated, self._networks)
 
   def _update_ipv4_address(self):
     if self._wifi_device is None:
