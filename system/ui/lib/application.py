@@ -584,6 +584,7 @@ class GuiApplication:
     chars.update(ord(c) for c in extra)
     codepoints = sorted(chars)
     cp_array = rl.ffi.new("int[]", codepoints)
+    cp_ptr = rl.ffi.cast("int *", cp_array)
 
     loaded = {}
     for font_weight in FontWeight:
@@ -591,7 +592,7 @@ class GuiApplication:
       if filename not in loaded:
         with as_file(FONT_DIR) as fspath:
           font_path = fspath / filename
-          font = rl.load_font_ex(font_path.as_posix(), 96, cp_array, len(codepoints))
+          font = rl.load_font_ex(font_path.as_posix(), 96, cp_ptr, len(codepoints))
           if font_weight != FontWeight.UNIFONT:
             rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
         loaded[filename] = font
