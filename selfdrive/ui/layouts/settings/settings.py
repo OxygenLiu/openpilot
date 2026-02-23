@@ -56,17 +56,17 @@ class SettingsLayout(Widget):
     self._current_panel = PanelType.DEVICE
 
     # Panel configuration
-    self._panels = {
-      PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
-      PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
-      PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
-      PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout()),
-      PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
-    }
+    self._panels = {PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout())}
     if HAS_NETWORK_UI:
       wifi_manager = WifiManager()
       wifi_manager.set_active(False)
       self._panels[PanelType.NETWORK] = PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager))
+    self._panels.update({
+      PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
+      PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
+      PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout()),
+      PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
+    })
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
     self._close_icon = gui_app.texture("icons/close2.png", CLOSE_ICON_SIZE, CLOSE_ICON_SIZE)
