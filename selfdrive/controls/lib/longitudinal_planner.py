@@ -230,9 +230,7 @@ class LongitudinalPlanner:
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
-    longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.aTarget = float(self.output_a_target)
-    longitudinalPlan.curvatureSpeedLimited = False
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)

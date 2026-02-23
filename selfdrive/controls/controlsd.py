@@ -2,6 +2,7 @@
 import math
 from numbers import Number
 
+import numpy as np
 from cereal import car, log
 import cereal.messaging as messaging
 from openpilot.common.constants import CV
@@ -16,7 +17,7 @@ from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, STEER_ANGLE_SATURATION_THRESHOLD
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
-from openpilot.selfdrive.controls.lib.longcontrol import LongControl
+from openpilot.selfdrive.controls.lib.longcontrol import LongControl, CONTROL_N_T_IDX
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 
@@ -118,8 +119,11 @@ class Controls:
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
 
-    # vTarget extraction for BMW DCC Control
-    actuators.speed = float(long_plan.vTarget)
+    # vTarget extraction for BMW DCC Control (computed inline, vTarget field dropped from schema)
+    if len(long_plan.speeds) == len(CONTROL_N_T_IDX):
+      actuators.speed = float(np.interp(self.CP.longitudinalActuatorDelay + DT_MDL, CONTROL_N_T_IDX, long_plan.speeds))
+    else:
+      actuators.speed = CS.vEgo
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
