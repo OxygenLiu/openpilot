@@ -95,7 +95,7 @@ class FontWeight(StrEnum):
   MEDIUM = "Inter-Medium.ttf"
   BOLD = "Inter-Bold.ttf"
   SEMI_BOLD = "Inter-SemiBold.ttf"
-  UNIFONT = "unifont.otf"
+  UNIFONT = "Inter-Regular.ttf"  # unifont.otf requires LFS; fallback to Inter for English
 
   # Small UI fonts
   DISPLAY_REGULAR = "Inter-Regular.ttf"

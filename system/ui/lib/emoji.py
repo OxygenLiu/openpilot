@@ -36,7 +36,10 @@ EMOJI_REGEX = re.compile(
 def _load_emoji_font() -> ImageFont.FreeTypeFont | None:
   global _emoji_font
   if _emoji_font is None:
-    _emoji_font = ImageFont.truetype(str(FONT_DIR.joinpath("NotoColorEmoji.ttf")), 109)
+    try:
+      _emoji_font = ImageFont.truetype(str(FONT_DIR.joinpath("NotoColorEmoji.ttf")), 109)
+    except OSError:
+      return None
   return _emoji_font
 
 def find_emoji(text):
@@ -45,8 +48,10 @@ def find_emoji(text):
 def emoji_tex(emoji):
   if emoji not in _cache:
     img = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.text((0, 0), emoji, font=_load_emoji_font(), embedded_color=True)
+    font = _load_emoji_font()
+    if font is not None:
+      draw = ImageDraw.Draw(img)
+      draw.text((0, 0), emoji, font=font, embedded_color=True)
     with io.BytesIO() as buffer:
       img.save(buffer, format="PNG")
       l = buffer.tell()
