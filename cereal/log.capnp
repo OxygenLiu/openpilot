@@ -130,8 +130,6 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
-    dccCalibrationMode @98;
-    dccFallbackMode @99;
 
     soundsUnavailableDEPRECATED @47;
   }
@@ -587,7 +585,6 @@ struct PandaState @0xa7649e2575e4591e {
   heartbeatLost @22 :Bool;
   interruptLoad @25 :Float32;
   fanPower @28 :UInt8;
-  fanStallCount @34 :UInt8;
 
   spiErrorCount @33 :UInt16;
 
@@ -716,6 +713,7 @@ struct PandaState @0xa7649e2575e4591e {
   usbPowerModeDEPRECATED @12 :PeripheralState.UsbPowerModeDEPRECATED;
   safetyParamDEPRECATED @20 :Int16;
   safetyParam2DEPRECATED @26 :UInt32;
+  fanStallCountDEPRECATED @34 :UInt8;
 }
 
 struct PeripheralState {
@@ -1252,11 +1250,10 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   speeds @33 :List(Float32);
   jerks @34 :List(Float32);
   aTarget @18 :Float32;
-  vTarget @40 :Float32;  # delay-compensated velocity target from get_accel_from_plan
   shouldStop @37: Bool;
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
-  curvatureSpeedLimited @41: Bool;  # True when curvature-based speed limiting is active
+
 
   solverExecutionTime @35 :Float32;
 
@@ -2151,13 +2148,10 @@ struct Joystick {
 struct DriverStateV2 {
   frameId @0 :UInt32;
   modelExecutionTime @1 :Float32;
-  dspExecutionTimeDEPRECATED @2 :Float32;
   gpuExecutionTime @8 :Float32;
   rawPredictions @3 :Data;
 
-  poorVisionProb @4 :Float32;
   wheelOnRightProb @5 :Float32;
-
   leftDriverData @6 :DriverData;
   rightDriverData @7 :DriverData;
 
@@ -2172,10 +2166,14 @@ struct DriverStateV2 {
     leftBlinkProb @7 :Float32;
     rightBlinkProb @8 :Float32;
     sunglassesProb @9 :Float32;
-    occludedProb @10 :Float32;
-    readyProb @11 :List(Float32);
-    notReadyProb @12 :List(Float32);
+    phoneProb @13 :Float32;
+    notReadyProbDEPRECATED @12 :List(Float32);
+    occludedProbDEPRECATED @10 :Float32;
+    readyProbDEPRECATED @11 :List(Float32);
   }
+
+  dspExecutionTimeDEPRECATED @2 :Float32;
+  poorVisionProbDEPRECATED @4 :Float32;
 }
 
 struct DriverStateDEPRECATED @0xb83c6cc593ed0a00 {
@@ -2227,6 +2225,9 @@ struct DriverMonitoringState @0xb83cda094a1da284 {
   hiStdCount @14 :UInt32;
   isActiveMode @16 :Bool;
   isRHD @4 :Bool;
+  uncertainCount @19 :UInt32;
+  phoneProbOffset @20 :Float32;
+  phoneProbValidCount @21 :UInt32;
 
   isPreviewDEPRECATED @15 :Bool;
   rhdCheckedDEPRECATED @5 :Bool;
@@ -2301,60 +2302,10 @@ struct LiveDelayData {
   points @4 :List(Float32);
   calPerc @6 :Int8;
 
-  # Longitudinal actuator delay learning fields
-  longitudinalDelay @7 :Float32;
-  longitudinalDelayEstimate @8 :Float32;
-  longitudinalDelayEstimateStd @9 :Float32;
-  longitudinalValidBlocks @10 :Int32;
-  longitudinalStatus @11 :Status;
-  longitudinalCalPerc @12 :Int8;
-  longitudinalPoints @13 :List(Float32);
-
-  # Vision-CAN speed safety validation
-  visionSpeed @14 :Float32;
-  canSpeed @15 :Float32;
-  visionCanDiff @16 :Float32;
-  visionCanSafetyPassed @17 :Bool;
-
-  # Personalized longitudinal T_FOLLOW scale factor learning
-  personalizedScales @18 :List(Float32);        # Learned scale factors for each VREL_BP interval
-  personalizedValidBlocks @19 :List(UInt16);    # Valid blocks per interval for confidence
-  personalizedProgress @20 :UInt8;              # Overall learning progress 0-100%
-  personalizedStatus @21 :PersonalizedStatus;   # Learning status
-  personalizedActiveInterval @22 :Int8;         # Currently learning interval (-1 if none)
-
-  # Personalized curve speed control learning
-  curveSpeedLookaheadTime @23 :Float32;         # Learned lookahead time (seconds)
-  curveSpeedLatAccelLimit @24 :Float32;         # Learned lateral acceleration limit (m/s²)
-  curveSpeedSpeedMargin @25 :Float32;           # Learned speed margin (0.0-1.0)
-  curveSpeedMinCurvatureThreshold @26 :Float32; # Learned min curvature threshold
-  curveSpeedValidSegments @27 :UInt16;          # Number of valid curve segments collected
-  curveSpeedProgress @28 :UInt8;                # Learning progress 0-100%
-  curveSpeedStatus @29 :PersonalizedStatus;     # Learning status
-
-  # NEW: Standard deviations for confidence metrics
-  curveSpeedLookaheadTimeStd @30 :Float32;         # Std of lookahead time
-  curveSpeedLatAccelLimitStd @31 :Float32;         # Std of lateral accel limit
-  curveSpeedSpeedMarginStd @32 :Float32;           # Std of speed margin
-  curveSpeedMinCurvatureThresholdStd @33 :Float32; # Std of min curvature
-
-  # NEW: Raw segment buffer for persistent learning (50 segments × 4 params = 200 floats)
-  curveSpeedSegmentBuffer @34 :List(Float32);   # Flattened [valid_segments, 4] array
-
-  # NEW: Raw block data for T_FOLLOW persistent learning (5 intervals × 50 blocks = 250 floats)
-  personalizedBlockData @35 :List(Float32);     # Flattened BlockAverage.values for all 5 intervals
-
   enum Status {
     unestimated @0;
     estimated @1;
     invalid @2;
-  }
-
-  enum PersonalizedStatus {
-    unlearned @0;      # No learned data yet
-    learning @1;       # Actively collecting data
-    learned @2;        # Sufficient confidence, actively using
-    invalid @3;        # Data inconsistent, using defaults
   }
 }
 
@@ -2573,13 +2524,10 @@ struct Event {
     controlsState @7 :ControlsState;
     selfdriveState @130 :SelfdriveState;
     gyroscope @99 :SensorEventData;
-    gyroscope2 @100 :SensorEventData;
     accelerometer @98 :SensorEventData;
-    accelerometer2 @101 :SensorEventData;
     magnetometer @95 :SensorEventData;
     lightSensor @96 :SensorEventData;
     temperatureSensor @97 :SensorEventData;
-    temperatureSensor2 @123 :SensorEventData;
     pandaStates @81 :List(PandaState);
     peripheralState @80 :PeripheralState;
     radarState @13 :RadarState;
@@ -2742,5 +2690,8 @@ struct Event {
     liveLocationKalmanDEPRECATED @72 :LiveLocationKalman;
     liveTracksDEPRECATED @16 :List(LiveTracksDEPRECATED);
     onroadEventsDEPRECATED @68: List(Car.OnroadEventDEPRECATED);
+    gyroscope2DEPRECATED @100 :SensorEventData;
+    accelerometer2DEPRECATED @101 :SensorEventData;
+    temperatureSensor2DEPRECATED @123 :SensorEventData;
   }
 }

@@ -79,8 +79,6 @@ struct CustomReserved15 @0xbd443b539493bc68 {
 struct CustomReserved16 @0xfc6241ed8877b611 {
 }
 
-# mapd structs
-
 struct MapdDownloadLocationDetails @0xff889853e7b0987f {
   location @0 :Text;
   totalFiles @1 :UInt32;

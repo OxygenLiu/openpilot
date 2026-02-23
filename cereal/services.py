@@ -7,7 +7,7 @@ from typing import Optional
 class QueueSize(IntEnum):
   BIG = 10 * 1024 * 1024      # 10MB - video frames, large AI outputs
   MEDIUM = 2 * 1024 * 1024    # 2MB - high freq (CAN), livestream
-  SMALL = 250 * 1024          # 250KB - most services (default)
+  SMALL = 250 * 1024          # 250KB - most services
 
 
 class Service:
@@ -23,13 +23,10 @@ _services: dict[str, tuple] = {
   # service: (should_log, frequency, qlog decimation (optional))
   # note: the "EncodeIdx" packets will still be in the log
   "gyroscope": (True, 104., 104),
-  "gyroscope2": (True, 100., 100),
   "accelerometer": (True, 104., 104),
-  "accelerometer2": (True, 100., 100),
   "magnetometer": (True, 25.),
   "lightSensor": (True, 100., 100),
   "temperatureSensor": (True, 2., 200),
-  "temperatureSensor2": (True, 2., 200),
   "gpsNMEA": (True, 9.),
   "deviceState": (True, 2., 1),
   "touch": (True, 20., 1),
@@ -87,15 +84,15 @@ _services: dict[str, tuple] = {
   "rawAudioData": (False, 20.),
   "bookmarkButton": (True, 0., 1),
   "audioFeedback": (True, 0., 1),
+  "roadEncodeData": (False, 20., None, QueueSize.BIG),
+  "driverEncodeData": (False, 20., None, QueueSize.BIG),
+  "wideRoadEncodeData": (False, 20., None, QueueSize.BIG),
+  "qRoadEncodeData": (False, 20., None, QueueSize.BIG),
 
   # debug
   "uiDebug": (True, 0., 1),
   "testJoystick": (True, 0.),
   "alertDebug": (True, 20., 5),
-  "roadEncodeData": (False, 20., None, QueueSize.BIG),
-  "driverEncodeData": (False, 20., None, QueueSize.BIG),
-  "wideRoadEncodeData": (False, 20., None, QueueSize.BIG),
-  "qRoadEncodeData": (False, 20., None, QueueSize.BIG),
   "livestreamWideRoadEncodeIdx": (False, 20.),
   "livestreamRoadEncodeIdx": (False, 20.),
   "livestreamDriverEncodeIdx": (False, 20.),
@@ -125,12 +122,12 @@ def build_header():
   h += "#include <map>\n"
   h += "#include <string>\n"
 
-  h += "struct service { std::string name; bool should_log; int frequency; int decimation; size_t queue_size; };\n"
+  h += "struct service { std::string name; bool should_log; float frequency; int decimation; size_t queue_size; };\n"
   h += "static std::map<std::string, service> services = {\n"
   for k, v in SERVICE_LIST.items():
     should_log = "true" if v.should_log else "false"
     decimation = -1 if v.decimation is None else v.decimation
-    h += '  { "%s", {"%s", %s, %d, %d, %d}},\n' % \
+    h += '  { "%s", {"%s", %s, %f, %d, %d}},\n' % \
          (k, k, should_log, v.frequency, decimation, v.queue_size)
   h += "};\n"
 
