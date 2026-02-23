@@ -90,17 +90,17 @@ FONT_DIR = ASSETS_DIR.joinpath("fonts")
 
 
 class FontWeight(StrEnum):
-  LIGHT = "Inter-Light.fnt"
-  NORMAL = "Inter-Regular.fnt" if BIG_UI else "Inter-Medium.fnt"
-  MEDIUM = "Inter-Medium.fnt"
-  BOLD = "Inter-Bold.fnt"
-  SEMI_BOLD = "Inter-SemiBold.fnt"
-  UNIFONT = "unifont.fnt"
+  LIGHT = "Inter-Light.ttf"
+  NORMAL = "Inter-Regular.ttf" if BIG_UI else "Inter-Medium.ttf"
+  MEDIUM = "Inter-Medium.ttf"
+  BOLD = "Inter-Bold.ttf"
+  SEMI_BOLD = "Inter-SemiBold.ttf"
+  UNIFONT = "unifont.otf"
 
   # Small UI fonts
-  DISPLAY_REGULAR = "Inter-Regular.fnt"
-  ROMAN = "Inter-Regular.fnt"
-  DISPLAY = "Inter-Bold.fnt"
+  DISPLAY_REGULAR = "Inter-Regular.ttf"
+  ROMAN = "Inter-Regular.ttf"
+  DISPLAY = "Inter-Bold.ttf"
 
 
 def font_fallback(font: rl.Font) -> rl.Font:
@@ -577,13 +577,25 @@ class GuiApplication:
       return False
 
   def _load_fonts(self):
-    for font_weight_file in FontWeight:
-      with as_file(FONT_DIR) as fspath:
-        fnt_path = fspath / font_weight_file
-        font = rl.load_font(fnt_path.as_posix())
-        if font_weight_file != FontWeight.UNIFONT:
-          rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
-        self._fonts[font_weight_file] = font
+    # Build extended character set: ASCII + Latin-1 Supplement + common UI symbols
+    chars = set(range(32, 127))  # Basic ASCII
+    chars.update(range(160, 256))  # Latin-1 Supplement (°, ×, ç, ü, etc.)
+    extra = "–‑✓×°§•⚙✕◀▶✔⌫⇧␣○●↳€£¥"
+    chars.update(ord(c) for c in extra)
+    codepoints = sorted(chars)
+    cp_array = rl.ffi.new("int[]", codepoints)
+
+    loaded = {}
+    for font_weight in FontWeight:
+      filename = str(font_weight)
+      if filename not in loaded:
+        with as_file(FONT_DIR) as fspath:
+          font_path = fspath / filename
+          font = rl.load_font_ex(font_path.as_posix(), 96, cp_array, len(codepoints))
+          if font_weight != FontWeight.UNIFONT:
+            rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
+        loaded[filename] = font
+      self._fonts[font_weight] = loaded[filename]
     rl.gui_set_font(self._fonts[FontWeight.NORMAL])
 
   def _set_styles(self):
