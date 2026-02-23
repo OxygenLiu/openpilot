@@ -13,29 +13,32 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from openpilot.common.params import Params
-
 MAPD_PATH = Path("/data/openpilot/selfdrive/mapd/mapd")
 BACKUP_DIR = Path("/data/openpilot/selfdrive/mapd/backups")
 VERSION_PATH = Path("/data/media/0/osm/mapd_version")
+PARAMS_DIR = Path("/data/params/d")
 
 GITHUB_API_URL = "https://api.github.com/repos/pfeiferj/mapd/releases/latest"
 
 def get_current_version():
-  """Get currently installed mapd version from Params"""
-  params = Params()
-  version = params.get("MapdVersion", encoding='utf-8')
-  return version if version else "v2.0.2"
+  """Get currently installed mapd version from params file"""
+  try:
+    return (PARAMS_DIR / "MapdVersion").read_text().strip() or "v2.0.2"
+  except FileNotFoundError:
+    return "v2.0.2"
 
 def get_latest_version():
-  """Check GitHub API for latest release version"""
+  """Check GitHub API for latest release version and date"""
   try:
     with urllib.request.urlopen(GITHUB_API_URL, timeout=10) as response:
       data = json.loads(response.read().decode('utf-8'))
-      return data.get('tag_name', '')
+      version = data.get('tag_name', '')
+      published = data.get('published_at', '')  # e.g. "2026-01-31T03:28:20Z"
+      date = published[:10] if published else ''  # "2026-01-31"
+      return version, date
   except Exception as e:
     print(f"Error fetching latest version: {e}", file=sys.stderr)
-    return ""
+    return "", ""
 
 def backup_current_binary():
   """Backup current mapd binary with version suffix"""
@@ -66,10 +69,13 @@ def download_binary(version):
     # Download to temporary file (don't replace binary yet)
     temp_file_path = MAPD_PATH.parent / f"mapd_{version}_temp"
 
-    with urllib.request.urlopen(download_url) as response:
-      with open(temp_file_path, "wb") as temp_file:
-        shutil.copyfileobj(response, temp_file)
-        os.fsync(temp_file.fileno())
+    # Use curl -L to follow redirects (urllib can fail behind proxies)
+    result = subprocess.run(
+      ["curl", "-fSL", "--max-time", "60", "-o", str(temp_file_path), download_url],
+      capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+      raise RuntimeError(f"curl failed: {result.stderr.strip()}")
 
     # Make executable
     os.chmod(temp_file_path, os.stat(temp_file_path).st_mode | stat.S_IEXEC)
@@ -130,8 +136,12 @@ def replace_binary(temp_file_path):
 def update_version_param(version):
   """Update MapdVersion param to new version"""
   try:
-    params = Params()
-    params.put("MapdVersion", version)
+    # Write to params dir
+    PARAMS_DIR.mkdir(parents=True, exist_ok=True)
+    param_path = PARAMS_DIR / "MapdVersion"
+    with open(param_path, "w") as f:
+      f.write(version)
+      os.fsync(f.fileno())
 
     # Also write to version file
     VERSION_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -147,23 +157,24 @@ def update_version_param(version):
 def check_for_updates():
   """Check if update is available and print status"""
   current = get_current_version()
-  latest = get_latest_version()
+  latest, date = get_latest_version()
 
   if not latest:
     print("ERROR: Could not fetch latest version")
     return False
 
+  date_str = f" ({date})" if date else ""
   if current == latest:
-    print(f"UP_TO_DATE: {current}")
+    print(f"UP_TO_DATE: {current}{date_str}")
     return True
   else:
-    print(f"UPDATE_AVAILABLE: {current} -> {latest}")
+    print(f"UPDATE_AVAILABLE: {current} -> {latest}{date_str}")
     return False
 
 def perform_update():
   """Perform full update: backup, download, stop, replace, start"""
   current_version = get_current_version()
-  latest_version = get_latest_version()
+  latest_version, _ = get_latest_version()
 
   if not latest_version:
     print("ERROR: Could not fetch latest version")
