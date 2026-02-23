@@ -6,6 +6,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.onroad.exp_button import ExpButton
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 
@@ -44,20 +45,20 @@ class FontSizes:
 
 @dataclass(frozen=True)
 class Colors:
-  white: rl.Color = rl.WHITE
-  disengaged: rl.Color = rl.Color(145, 155, 149, 255)
-  override: rl.Color = rl.Color(145, 155, 149, 255)  # Added
-  engaged: rl.Color = rl.Color(128, 216, 166, 255)
-  disengaged_bg: rl.Color = rl.Color(0, 0, 0, 153)
-  override_bg: rl.Color = rl.Color(145, 155, 149, 204)
-  engaged_bg: rl.Color = rl.Color(128, 216, 166, 204)
-  grey: rl.Color = rl.Color(166, 166, 166, 255)
-  dark_grey: rl.Color = rl.Color(114, 114, 114, 255)
-  black_translucent: rl.Color = rl.Color(0, 0, 0, 166)
-  white_translucent: rl.Color = rl.Color(255, 255, 255, 200)
-  border_translucent: rl.Color = rl.Color(255, 255, 255, 75)
-  header_gradient_start: rl.Color = rl.Color(0, 0, 0, 114)
-  header_gradient_end: rl.Color = rl.BLANK
+  WHITE = rl.WHITE
+  DISENGAGED = rl.Color(145, 155, 149, 255)
+  OVERRIDE = rl.Color(145, 155, 149, 255)  # Added
+  ENGAGED = rl.Color(128, 216, 166, 255)
+  DISENGAGED_BG = rl.Color(0, 0, 0, 153)
+  OVERRIDE_BG = rl.Color(145, 155, 149, 204)
+  ENGAGED_BG = rl.Color(128, 216, 166, 204)
+  GREY = rl.Color(166, 166, 166, 255)
+  DARK_GREY = rl.Color(114, 114, 114, 255)
+  BLACK_TRANSLUCENT = rl.Color(0, 0, 0, 166)
+  WHITE_TRANSLUCENT = rl.Color(255, 255, 255, 200)
+  BORDER_TRANSLUCENT = rl.Color(255, 255, 255, 75)
+  HEADER_GRADIENT_START = rl.Color(0, 0, 0, 114)
+  HEADER_GRADIENT_END = rl.BLANK
 
 
 UI_CONFIG = UIConfig()
@@ -70,7 +71,7 @@ class HudRenderer(Widget):
     super().__init__()
     """Initialize the HUD renderer."""
     self.is_cruise_set: bool = False
-    self.is_cruise_available: bool = False
+    self.is_cruise_available: bool = True
     self.set_speed: float = SET_SPEED_NA
     self.speed: float = 0.0
     self.v_ego_cluster_seen: bool = False
@@ -79,7 +80,7 @@ class HudRenderer(Widget):
     self._font_bold: rl.Font = gui_app.font(FontWeight.BOLD)
     self._font_medium: rl.Font = gui_app.font(FontWeight.MEDIUM)
 
-    self._exp_button = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
+    self._exp_button: ExpButton = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
 
     # Speed limit sign state
     self._params = Params()
@@ -136,8 +137,8 @@ class HudRenderer(Widget):
       int(rect.y),
       int(rect.width),
       UI_CONFIG.header_height,
-      COLORS.header_gradient_start,
-      COLORS.header_gradient_end,
+      COLORS.HEADER_GRADIENT_START,
+      COLORS.HEADER_GRADIENT_END,
     )
 
     if self.is_cruise_available:
@@ -152,22 +153,21 @@ class HudRenderer(Widget):
     button_y = rect.y + UI_CONFIG.border_size
     self._exp_button.render(rl.Rectangle(button_x, button_y, UI_CONFIG.button_size, UI_CONFIG.button_size))
 
-  def handle_mouse_event(self) -> bool:
+  def user_interacting(self) -> bool:
+    return self._exp_button.is_pressed
+
+  def _handle_mouse_release(self, mouse_pos) -> None:
     # Speed limit sign tap — toggle confirmation
     if self._speed_limit > 0:
-      mouse_pos = rl.get_mouse_position()
-      # Circle collision: check distance from center
-      dx = mouse_pos.x - SPEED_SIGN_X
-      dy = mouse_pos.y - SPEED_SIGN_Y
+      dx = mouse_pos.x - (self._rect.x + SPEED_SIGN_X)
+      dy = mouse_pos.y - (self._rect.y + SPEED_SIGN_Y)
       if math.sqrt(dx * dx + dy * dy) <= SPEED_SIGN_RADIUS:
-        if rl.is_mouse_button_released(rl.MouseButton.MOUSE_BUTTON_LEFT):
-          new_confirmed = not self._speed_limit_confirmed
-          self._speed_limit_confirmed = new_confirmed
-          self._params.put("SpeedLimitConfirmed", "1" if new_confirmed else "0")
-          self._params.put("SpeedLimitValue", str(self._speed_limit))
-        return True
-
-    return bool(self._exp_button.handle_mouse_event())
+        new_confirmed = not self._speed_limit_confirmed
+        self._speed_limit_confirmed = new_confirmed
+        self._params.put("SpeedLimitConfirmed", "1" if new_confirmed else "0")
+        self._params.put("SpeedLimitValue", str(self._speed_limit))
+        return
+    super()._handle_mouse_release(mouse_pos)
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""
@@ -176,21 +176,21 @@ class HudRenderer(Widget):
     y = rect.y + 45
 
     set_speed_rect = rl.Rectangle(x, y, set_speed_width, UI_CONFIG.set_speed_height)
-    rl.draw_rectangle_rounded(set_speed_rect, 0.2, 30, COLORS.black_translucent)
-    rl.draw_rectangle_rounded_lines_ex(set_speed_rect, 0.2, 30, 6, COLORS.border_translucent)
+    rl.draw_rectangle_rounded(set_speed_rect, 0.35, 10, COLORS.BLACK_TRANSLUCENT)
+    rl.draw_rectangle_rounded_lines_ex(set_speed_rect, 0.35, 10, 6, COLORS.BORDER_TRANSLUCENT)
 
-    max_color = COLORS.grey
-    set_speed_color = COLORS.dark_grey
+    max_color = COLORS.GREY
+    set_speed_color = COLORS.DARK_GREY
     if self.is_cruise_set:
-      set_speed_color = COLORS.white
+      set_speed_color = COLORS.WHITE
       if ui_state.status == UIStatus.ENGAGED:
-        max_color = COLORS.engaged
+        max_color = COLORS.ENGAGED
       elif ui_state.status == UIStatus.DISENGAGED:
-        max_color = COLORS.disengaged
+        max_color = COLORS.DISENGAGED
       elif ui_state.status == UIStatus.OVERRIDE:
-        max_color = COLORS.override
+        max_color = COLORS.OVERRIDE
 
-    max_text = "MAX"
+    max_text = tr("MAX")
     max_text_width = measure_text_cached(self._font_semi_bold, max_text, FONT_SIZES.max_speed).x
     rl.draw_text_ex(
       self._font_semi_bold,
@@ -213,16 +213,17 @@ class HudRenderer(Widget):
     )
 
   def _draw_current_speed(self, rect: rl.Rectangle) -> None:
-    """Draw the current vehicle speed and unit."""
+    """Draw the current vehicle speed and unit. Yellow when curvature-limited."""
     speed_text = str(round(self.speed))
     speed_text_size = measure_text_cached(self._font_bold, speed_text, FONT_SIZES.current_speed)
     speed_pos = rl.Vector2(rect.x + rect.width / 2 - speed_text_size.x / 2, 180 - speed_text_size.y / 2)
-    rl.draw_text_ex(self._font_bold, speed_text, speed_pos, FONT_SIZES.current_speed, 0, COLORS.white)
+    speed_color = rl.Color(255, 215, 0, 255) if ui_state.curvature_speed_limited else COLORS.WHITE
+    rl.draw_text_ex(self._font_bold, speed_text, speed_pos, FONT_SIZES.current_speed, 0, speed_color)
 
-    unit_text = "km/h" if ui_state.is_metric else "mph"
+    unit_text = tr("km/h") if ui_state.is_metric else tr("mph")
     unit_text_size = measure_text_cached(self._font_medium, unit_text, FONT_SIZES.speed_unit)
     unit_pos = rl.Vector2(rect.x + rect.width / 2 - unit_text_size.x / 2, 290 - unit_text_size.y / 2)
-    rl.draw_text_ex(self._font_medium, unit_text, unit_pos, FONT_SIZES.speed_unit, 0, COLORS.white_translucent)
+    rl.draw_text_ex(self._font_medium, unit_text, unit_pos, FONT_SIZES.speed_unit, 0, COLORS.WHITE_TRANSLUCENT)
 
   def _draw_speed_limit_sign(self, rect: rl.Rectangle) -> None:
     """Draw Vienna-style speed limit sign (red circle, white fill, black number).
