@@ -25,9 +25,6 @@ export STAGING_ROOT="/data/safe_staging"
 # AGNOS 16+ has these in the system Python, but 12.8 keeps them in the venv
 export PATH="/usr/local/venv/bin:$PATH"
 
-# AGNOS 12.8: Raylib uses Wayland backend (via Weston compositor, not DRM)
-# Weston creates its socket at /var/tmp/weston/ (per weston.service config)
-export XDG_RUNTIME_DIR="/var/tmp/weston"
-export WAYLAND_DISPLAY="wayland-0"
-# Fix socket permissions — weston creates it as root but raylib runs as comma
-sudo chmod a+rw /var/tmp/weston/wayland-0 2>/dev/null || true
+# AGNOS 12.8: Raylib uses DRM backend (direct /dev/dri/card0, no compositor)
+# Stop Weston if running — raylib needs DRM master which Weston holds
+sudo systemctl stop weston 2>/dev/null || true
