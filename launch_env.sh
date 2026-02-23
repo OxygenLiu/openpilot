@@ -21,7 +21,11 @@ fi
 
 export STAGING_ROOT="/data/safe_staging"
 
-# Kill Weston compositor — raylib uses DRM backend directly
-# AGNOS 12.8 still starts Weston via systemd, but raylib needs exclusive DRM access
-pkill -9 weston 2>/dev/null || true
+# AGNOS 12.8: Use venv Python which has pyray and other raylib UI dependencies
+# AGNOS 16+ has these in the system Python, but 12.8 keeps them in the venv
+export PATH="/usr/local/venv/bin:$PATH"
+
+# Stop Weston compositor — raylib uses DRM backend directly
+# AGNOS 12.8 starts Weston via systemd; pkill alone doesn't work as systemd restarts it
+sudo systemctl stop weston 2>/dev/null || pkill -9 weston 2>/dev/null || true
 sleep 1
