@@ -35,7 +35,7 @@ except Exception:
 TETHERING_IP_ADDRESS = "192.168.43.1"
 DEFAULT_TETHERING_PASSWORD = "swagswagcomma"
 SIGNAL_QUEUE_SIZE = 10
-SCAN_PERIOD_SECONDS = 5
+SCAN_PERIOD_SECONDS = 10
 
 
 class SecurityType(IntEnum):
@@ -128,7 +128,7 @@ class AccessPoint:
 class WifiManager:
   def __init__(self):
     self._networks: list[Network] = []  # a network can be comprised of multiple APs
-    self._active = True  # used to not run when not in settings
+    self._active = False  # only scan when Network settings panel is visible
     self._exit = False
 
     # DBus connections
@@ -284,7 +284,9 @@ class WifiManager:
           self._update_networks()
           self._request_scan()
           self._last_network_update = time.monotonic()
-      time.sleep(1 / 2.)
+        time.sleep(0.5)
+      else:
+        time.sleep(2.0)  # sleep longer when inactive to reduce CPU wake-ups
 
   def _wait_for_wifi_device(self):
     while not self._exit:

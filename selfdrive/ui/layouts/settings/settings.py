@@ -59,7 +59,6 @@ class SettingsLayout(Widget):
     self._panels = {PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout())}
     if HAS_NETWORK_UI:
       wifi_manager = WifiManager()
-      wifi_manager.set_active(False)
       self._panels[PanelType.NETWORK] = PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager))
     self._panels.update({
       PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
