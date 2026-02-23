@@ -636,16 +636,10 @@ class WifiManager:
           aps[ssid] = []
         aps[ssid].append((strength, in_use, security))
 
-      # Get known/saved connections via nmcli too
+      # Get known/saved connections via D-Bus (cheap — reads actual SSIDs, not connection names)
       try:
-        saved_result = subprocess.run(
-          ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show'],
-          capture_output=True, text=True, timeout=5
-        )
-        saved_ssids = set()
-        for line in saved_result.stdout.strip().split('\n'):
-          if ':802-11-wireless' in line:
-            saved_ssids.add(line.split(':')[0])
+        known_connections = self._get_connections()
+        saved_ssids = set(known_connections.keys())
       except Exception:
         saved_ssids = set()
 
