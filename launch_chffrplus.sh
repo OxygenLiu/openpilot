@@ -69,6 +69,11 @@ function launch {
   ln -sfn $(pwd) /data/pythonpath
   export PYTHONPATH="$PWD"
 
+  # AGNOS 12.8: extra packages in /data/pip_packages (read-only venv)
+  if [ -d "/data/pip_packages" ]; then
+    export PYTHONPATH="$PYTHONPATH:/data/pip_packages"
+  fi
+
   # hardware specific init
   if [ -f /AGNOS ]; then
     agnos_init

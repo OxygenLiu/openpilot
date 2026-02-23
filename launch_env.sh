@@ -25,12 +25,6 @@ export STAGING_ROOT="/data/safe_staging"
 # AGNOS 16+ has these in the system Python, but 12.8 keeps them in the venv
 export PATH="/usr/local/venv/bin:$PATH"
 
-# AGNOS 12.8: Extra packages (jeepney etc.) installed to /data/pip_packages
-# since the system venv at /usr/local/venv is read-only
-if [ -d "/data/pip_packages" ]; then
-  export PYTHONPATH="/data/pip_packages:${PYTHONPATH:-}"
-fi
-
 # AGNOS 12.8: Raylib uses Wayland backend (via Weston compositor, not DRM)
 # Weston creates its socket at /var/tmp/weston/ (per weston.service config)
 export XDG_RUNTIME_DIR="/var/tmp/weston"
