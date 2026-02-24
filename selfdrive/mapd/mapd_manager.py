@@ -13,12 +13,41 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-MAPD_PATH = Path("/data/openpilot/selfdrive/mapd/mapd")
-BACKUP_DIR = Path("/data/openpilot/selfdrive/mapd/backups")
+MAPD_PATH = Path("/data/media/0/osm/mapd")
+BACKUP_DIR = Path("/data/media/0/osm/mapd_backups")
 VERSION_PATH = Path("/data/media/0/osm/mapd_version")
 PARAMS_DIR = Path("/data/params/d")
 
+OLD_REPO_PATH = Path("/data/openpilot/selfdrive/mapd/mapd")
+
 GITHUB_API_URL = "https://api.github.com/repos/pfeiferj/mapd/releases/latest"
+
+def ensure_binary():
+  """Ensure mapd binary exists at MAPD_PATH, migrating from repo if needed"""
+  if MAPD_PATH.exists():
+    return True
+
+  MAPD_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+  # Migrate from old in-repo location
+  if OLD_REPO_PATH.exists():
+    shutil.copy2(OLD_REPO_PATH, MAPD_PATH)
+    os.chmod(MAPD_PATH, os.stat(MAPD_PATH).st_mode | stat.S_IEXEC)
+    print(f"Migrated mapd binary from {OLD_REPO_PATH} to {MAPD_PATH}")
+    return True
+
+  # No binary anywhere — download latest
+  print("No mapd binary found, downloading latest...")
+  latest_version, _ = get_latest_version()
+  if latest_version:
+    temp = download_binary(latest_version)
+    if temp:
+      os.rename(temp, MAPD_PATH)
+      update_version_param(latest_version)
+      return True
+
+  print("ERROR: Could not obtain mapd binary", file=sys.stderr)
+  return False
 
 def get_current_version():
   """Get currently installed mapd version from params file"""
@@ -107,6 +136,7 @@ def stop_mapd():
 def start_mapd():
   """Start mapd daemon in background"""
   try:
+    ensure_binary()
     # Start new mapd process in background
     subprocess.Popen(
       [str(MAPD_PATH)],
@@ -228,7 +258,7 @@ def perform_update():
 
 if __name__ == "__main__":
   if len(sys.argv) < 2:
-    print("Usage: mapd_manager.py [check|update]")
+    print("Usage: mapd_manager.py [check|update|ensure]")
     sys.exit(1)
 
   command = sys.argv[1]
@@ -239,7 +269,10 @@ if __name__ == "__main__":
   elif command == "update":
     success = perform_update()
     sys.exit(0 if success else 1)
+  elif command == "ensure":
+    success = ensure_binary()
+    sys.exit(0 if success else 1)
   else:
     print(f"Unknown command: {command}")
-    print("Usage: mapd_manager.py [check|update]")
+    print("Usage: mapd_manager.py [check|update|ensure]")
     sys.exit(1)

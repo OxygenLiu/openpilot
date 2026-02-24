@@ -51,6 +51,7 @@ cereal/services.h
 cereal/gen
 cereal/messaging/bridge
 selfdrive/mapd/default_speeds_by_region.json
+selfdrive/mapd/mapd
 system/proclogd/proclogd
 selfdrive/ui/translations/tmp
 selfdrive/test/longitudinal_maneuvers/out
