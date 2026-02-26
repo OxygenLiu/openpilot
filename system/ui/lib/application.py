@@ -40,6 +40,8 @@ PROFILE_RENDER = int(os.getenv("PROFILE_RENDER", "0"))
 PROFILE_STATS = int(os.getenv("PROFILE_STATS", "100"))  # Number of functions to show in profile output
 RECORD = os.getenv("RECORD") == "1"
 RECORD_HLS = os.getenv("RECORD_HLS") == "1"
+RECORD_HW_ENCODE = os.getenv("RECORD_HW_ENCODE") == "1"
+RECORD_SKIP = max(0, int(os.getenv("RECORD_SKIP", "0")))  # Capture every Nth frame (0=every frame)
 if RECORD and RECORD_HLS:
   RECORD_OUTPUT = os.getenv("RECORD_OUTPUT", "/tmp/hud_live/stream.m3u8")
 else:
@@ -214,6 +216,7 @@ class GuiApplication:
     self._render_texture: rl.RenderTexture | None = None
     self._burn_in_shader: rl.Shader | None = None
     self._ffmpeg_proc: subprocess.Popen | None = None
+    self._hw_encoder = None
     self._textures: dict[str, rl.Texture] = {}
     self._target_fps: int = _DEFAULT_FPS
     self._last_fps_log_time: float = time.monotonic()
@@ -282,27 +285,58 @@ class GuiApplication:
         rl.set_texture_filter(self._render_texture.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
 
       if RECORD:
-        ffmpeg_args = [
-          'ffmpeg',
-          '-v', 'warning',          # Reduce ffmpeg log spam
-          '-stats',                 # Show encoding progress
-          '-f', 'rawvideo',         # Input format
-          '-pix_fmt', 'rgba',       # Input pixel format
-          '-s', f'{self._width}x{self._height}',  # Input resolution
-          '-r', str(fps),           # Input frame rate
-          '-i', 'pipe:0',           # Input from stdin
-          '-vf', 'vflip,format=yuv420p',  # Flip vertically and convert rgba to yuv420p
-          '-c:v', 'libx264',        # Video codec
-          '-preset', 'ultrafast',   # Encoding speed
-          '-y',                     # Overwrite existing file
-        ]
+        # Try hardware encoding if requested and available
+        if RECORD_HW_ENCODE:
+          try:
+            from hw_encoder import HWEncoder
+            if HWEncoder.is_available():
+              self._hw_encoder = HWEncoder(self._width, self._height, fps)
+              cloudlog.info("RECORD: using hardware H264 encoder")
+          except Exception as e:
+            cloudlog.warning(f"RECORD: HW encoder init failed, falling back to ffmpeg: {e}")
+            self._hw_encoder = None
+
+        if self._hw_encoder:
+          # HW encoder produces H264 NAL units — ffmpeg just muxes (zero CPU encode cost)
+          ffmpeg_args = [
+            'ffmpeg',
+            '-v', 'warning',
+            '-stats',
+            '-f', 'h264',              # Input is raw H264 bitstream
+            '-r', str(fps),            # Frame rate (H264 raw stream has no timestamps)
+            '-i', 'pipe:0',
+            '-c:v', 'copy',            # Passthrough — no re-encoding
+            '-y',
+          ]
+        else:
+          # Software encoding fallback: rawvideo → libx264
+          # When RECORD_SKIP is set, actual capture fps is lower than UI fps
+          capture_fps = fps // (RECORD_SKIP + 1) if RECORD_SKIP > 0 else fps
+          ffmpeg_args = [
+            'ffmpeg',
+            '-v', 'warning',
+            '-stats',
+            '-f', 'rawvideo',
+            '-pix_fmt', 'rgba',
+            '-s', f'{self._width}x{self._height}',
+            '-r', str(capture_fps),
+            '-i', 'pipe:0',
+            '-vf', 'vflip,format=yuv420p',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-y',
+          ]
+
         if RECORD_HLS:
           hls_dir = os.path.dirname(RECORD_OUTPUT) or "/tmp/hud_live"
-          hls_time = int(os.getenv("RECORD_HLS_TIME", "2"))
-          gop = max(fps * hls_time, 1)
+          hls_time = float(os.getenv("RECORD_HLS_TIME", "2"))
+          if not self._hw_encoder:
+            gop = max(int(capture_fps * hls_time), 1)
+            ffmpeg_args.extend([
+              '-tune', 'zerolatency',
+              '-g', str(gop), '-keyint_min', str(gop),
+            ])
           ffmpeg_args.extend([
-            '-tune', 'zerolatency',
-            '-g', str(gop), '-keyint_min', str(gop),
             '-f', 'hls',
             '-hls_time', str(hls_time),
             '-hls_list_size', os.getenv("RECORD_HLS_LIST_SIZE", "5"),
@@ -432,9 +466,24 @@ class GuiApplication:
     return texture
 
   def close_ffmpeg(self):
+    if self._hw_encoder is not None:
+      try:
+        # Flush remaining frames through ffmpeg before closing
+        if self._ffmpeg_proc is not None:
+          flush_data = self._hw_encoder.flush()
+          if flush_data:
+            self._ffmpeg_proc.stdin.write(flush_data)
+      except (BrokenPipeError, OSError):
+        pass
+      self._hw_encoder.close()
+      self._hw_encoder = None
+
     if self._ffmpeg_proc is not None:
-      self._ffmpeg_proc.stdin.flush()
-      self._ffmpeg_proc.stdin.close()
+      try:
+        self._ffmpeg_proc.stdin.flush()
+        self._ffmpeg_proc.stdin.close()
+      except (BrokenPipeError, OSError):
+        pass
       try:
         self._ffmpeg_proc.wait(timeout=5)
       except subprocess.TimeoutExpired:
@@ -544,12 +593,25 @@ class GuiApplication:
 
         rl.end_drawing()
 
-        if RECORD:
+        if RECORD and self._ffmpeg_proc and (RECORD_SKIP == 0 or self._frame % (RECORD_SKIP + 1) == 0):
           image = rl.load_image_from_texture(self._render_texture.texture)
           data_size = image.width * image.height * 4
           data = bytes(rl.ffi.buffer(image.data, data_size))
-          self._ffmpeg_proc.stdin.write(data)
-          self._ffmpeg_proc.stdin.flush()
+          try:
+            if self._hw_encoder:
+              h264 = self._hw_encoder.encode(data)
+              # Write SPS/PPS header before first frame so ffmpeg can parse the stream
+              if self._frame == 0:
+                header = self._hw_encoder.get_header()
+                if header:
+                  self._ffmpeg_proc.stdin.write(header)
+              if h264:
+                self._ffmpeg_proc.stdin.write(h264)
+            else:
+              self._ffmpeg_proc.stdin.write(data)
+            self._ffmpeg_proc.stdin.flush()
+          except (BrokenPipeError, OSError) as e:
+            cloudlog.warning(f"RECORD: write failed: {e}")
           rl.unload_image(image)
 
         self._monitor_fps()
