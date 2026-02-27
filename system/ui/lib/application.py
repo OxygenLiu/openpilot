@@ -42,6 +42,8 @@ RECORD = os.getenv("RECORD") == "1"
 RECORD_HLS = os.getenv("RECORD_HLS") == "1"
 RECORD_HW_ENCODE = os.getenv("RECORD_HW_ENCODE") == "1"
 RECORD_SKIP = max(0, int(os.getenv("RECORD_SKIP", "0")))  # Capture every Nth frame (0=every frame)
+RECORD_CRF = os.getenv("RECORD_CRF", "")  # empty = ffmpeg default (23); set to "10" for near-lossless
+RECORD_PRESET = os.getenv("RECORD_PRESET", "ultrafast")
 if RECORD and RECORD_HLS:
   RECORD_OUTPUT = os.getenv("RECORD_OUTPUT", "/tmp/hud_live/stream.m3u8")
 else:
@@ -323,9 +325,11 @@ class GuiApplication:
             '-i', 'pipe:0',
             '-vf', 'vflip,format=yuv420p',
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-y',
+            '-preset', RECORD_PRESET,
           ]
+          if RECORD_CRF:
+            ffmpeg_args.extend(['-crf', RECORD_CRF])
+          ffmpeg_args.extend(['-y'])
 
         if RECORD_HLS:
           hls_dir = os.path.dirname(RECORD_OUTPUT) or "/tmp/hud_live"
