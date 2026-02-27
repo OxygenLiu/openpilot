@@ -181,8 +181,8 @@ class SpeedLimitMiddleware:
     # Read confirmation state from Params (set by HUD touch handler)
     confirmed_raw = self.params.get("SpeedLimitConfirmed")
     confirmed_param = confirmed_raw.decode('utf-8') if confirmed_raw else None
-    confirmed_value_raw = self.params.get("SpeedLimitValue")
-    confirmed_value_param = confirmed_value_raw.decode('utf-8') if confirmed_value_raw else None
+    value_raw = self.params.get("SpeedLimitValue")
+    confirmed_value_param = value_raw.decode('utf-8') if value_raw else None
 
     if confirmed_param == '1' and confirmed_value_param:
       try:

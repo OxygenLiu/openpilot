@@ -278,7 +278,8 @@ def posenet_invalid_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.Sub
 
 
 def process_not_running_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  not_running = [p.name for p in sm['managerState'].processes if not p.running and p.shouldBeRunning]
+  optional_procs = {'mapd', 'speedlimitd'}
+  not_running = [p.name for p in sm['managerState'].processes if not p.running and p.shouldBeRunning and p.name not in optional_procs]
   msg = ', '.join(not_running)
   return NoEntryAlert(msg, alert_text_1="Process Not Running")
 
@@ -857,6 +858,11 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.processNotRunning: {
     ET.NO_ENTRY: process_not_running_alert,
     ET.SOFT_DISABLE: soft_disable_alert("Process Not Running"),
+  },
+
+  # Non-critical: mapd/speedlimitd crashed — show warning, don't block driving
+  EventName.mapdProcessError: {
+    ET.PERMANENT: NormalPermanentAlert("Speed Limit Unavailable", "mapd process not running"),
   },
 
   EventName.radarFault: {
