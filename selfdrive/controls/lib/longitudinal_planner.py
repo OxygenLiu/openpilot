@@ -3,7 +3,9 @@ import math
 import numpy as np
 
 import cereal.messaging as messaging
-from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX, A_TOTAL_MAX
+from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+
+A_TOTAL_MAX = 4.0  # friction circle limit: μg with conservative μ = 0.4 [m/s²]
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
