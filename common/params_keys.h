@@ -90,6 +90,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MapdSettings", {PERSISTENT, JSON}},
     {"MapdSpeedLimitControlEnabled", {PERSISTENT, BOOL}},
     {"MapdSpeedLimitOffsetPercent", {PERSISTENT, INT}},
+    {"SpeedLimitConfirmed", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, STRING}},
+    {"SpeedLimitValue", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, STRING}},
     {"MapdVersion", {PERSISTENT, STRING}},
     {"ModelUpdateStatus", {CLEAR_ON_MANAGER_START, STRING}},
     {"ModelUpdateResults", {CLEAR_ON_MANAGER_START, JSON}},
