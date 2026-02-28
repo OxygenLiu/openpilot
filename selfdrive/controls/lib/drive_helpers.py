@@ -2,7 +2,11 @@ import math
 import numpy as np
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.realtime import DT_CTRL, DT_MDL
-from opendbc.car.interfaces import MAX_LATERAL_ACCEL_NO_ROLL, MAX_LATERAL_JERK
+try:
+  from opendbc.car.interfaces import MAX_LATERAL_ACCEL_NO_ROLL, MAX_LATERAL_JERK
+except ImportError:
+  MAX_LATERAL_ACCEL_NO_ROLL = 3.0  # m/s²
+  MAX_LATERAL_JERK = 3.0  # m/s³
 
 MIN_SPEED = 1.0
 CONTROL_N = 17
