@@ -29,12 +29,14 @@
     "ShowSpeedLimitSign": {
       "type": "bool",
       "default": true,
-      "label": "Show Speed Limit Sign"
+      "label": "Show Speed Limit Sign",
+      "desc": "Display speed limit sign on HUD"
     },
     "ShowCurvatureSpeed": {
       "type": "bool",
       "default": true,
-      "label": "Show Curvature Speed"
+      "label": "Show Curvature Speed",
+      "desc": "Display recommended curve speed on HUD"
     }
   }
 }

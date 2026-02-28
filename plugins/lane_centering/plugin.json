@@ -18,7 +18,8 @@
     "LaneCenteringCorrection": {
       "type": "bool",
       "default": false,
-      "label": "Lane Centering Correction"
+      "label": "Lane Centering in Curves",
+      "desc": "Apply lane offset for better centering"
     }
   }
 }

@@ -36,15 +36,36 @@
     }
   ],
   "params": {
+    "MapdSpeedLimitControlEnabled": {
+      "type": "bool",
+      "default": false,
+      "label": "Map Speed Control",
+      "desc": "Automatically limit speed based on OSM map data"
+    },
+    "MapdSpeedLimitOffsetPercent": {
+      "type": "pills",
+      "default": 10,
+      "label": "Speed Offset",
+      "desc": "Percentage above the posted speed limit",
+      "options": [0, 5, 10, 15],
+      "suffix": "%",
+      "dependsOn": "MapdSpeedLimitControlEnabled"
+    },
+    "MapdCurveTargetLatAccel": {
+      "type": "pills",
+      "default": 1,
+      "label": "Curve Comfort",
+      "desc": "Target lateral acceleration in curves (m/s\u00b2)",
+      "options": ["1.5", "2.0", "2.5", "3.0"],
+      "dependsOn": "MapdSpeedLimitControlEnabled"
+    },
     "SpeedLimitConfirmed": {
       "type": "string",
-      "default": "0",
-      "label": "Speed Limit Confirmed"
+      "default": "0"
     },
     "SpeedLimitValue": {
       "type": "string",
-      "default": "",
-      "label": "Speed Limit Value"
+      "default": ""
     }
   }
 }
