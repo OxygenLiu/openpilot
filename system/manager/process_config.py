@@ -79,7 +79,7 @@ procs = [
   PythonProcess("modeld", "selfdrive.modeld.modeld", only_onroad),
   PythonProcess("dmonitoringmodeld", "selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),
 
-  NativeProcess("mapd", "selfdrive/mapd", ["./mapd"], always_run),
+  NativeProcess("mapd", "selfdrive/mapd", ["/data/media/0/osm/mapd"], always_run),
   PythonProcess("speedlimitd", "selfdrive.mapd.speedlimitd", only_onroad),
 
   PythonProcess("sensord", "system.sensord.sensord", only_onroad, enabled=not PC),
