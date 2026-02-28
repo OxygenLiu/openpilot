@@ -87,6 +87,10 @@ def manager_init() -> None:
                        dirty=build_metadata.openpilot.is_dirty,
                        device=HARDWARE.get_device_type())
 
+  # build plugin schemas and services before any process imports cereal
+  from openpilot.selfdrive.plugins.builder import build
+  build()
+
   # preimport all processes
   for p in managed_processes.values():
     p.prepare()

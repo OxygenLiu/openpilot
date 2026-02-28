@@ -1,6 +1,7 @@
 from cereal import log
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_MDL
+from openpilot.selfdrive.plugins.hooks import hooks
 
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
@@ -107,6 +108,10 @@ class DesireHelper:
     self.prev_one_blinker = one_blinker
 
     self.desire = DESIRES[self.lane_change_direction][self.lane_change_state]
+
+    # Plugin hook: allow plugins to modify desire (lane change extensions)
+    self.desire = hooks.run('desire.post_update', self.desire, self.lane_change_state,
+                            self.lane_change_direction, carstate)
 
     # Send keep pulse once per second during LaneChangeStart.preLaneChange
     if self.lane_change_state in (LaneChangeState.off, LaneChangeState.laneChangeStarting):

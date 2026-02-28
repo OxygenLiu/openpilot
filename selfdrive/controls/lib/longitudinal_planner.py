@@ -14,6 +14,7 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.plugins.hooks import hooks
 
 LON_MPC_STEP = 0.2  # first step is 0.2s
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
@@ -102,6 +103,9 @@ class LongitudinalPlanner:
     v_cruise = v_cruise_kph * CV.KPH_TO_MS
     v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
 
+    # Plugin hook: allow plugins to modify v_cruise (speed limit enforcement, curve speed)
+    v_cruise = hooks.run('planner.v_cruise', v_cruise, v_ego, sm)
+
     long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
     force_slow_decel = sm['controlsState'].forceDecel
 
@@ -119,6 +123,9 @@ class LongitudinalPlanner:
       accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
     else:
       accel_clip = [ACCEL_MIN, ACCEL_MAX]
+
+    # Plugin hook: allow plugins to modify accel limits (curve speed limiting)
+    accel_clip = hooks.run('planner.accel_limits', accel_clip, v_ego, v_cruise, sm)
 
     if reset_state:
       self.v_desired_filter.x = v_ego

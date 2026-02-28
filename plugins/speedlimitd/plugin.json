@@ -1,0 +1,50 @@
+{
+  "id": "speedlimitd",
+  "name": "Speed Limit Daemon",
+  "version": "1.0.0",
+  "type": "hybrid",
+  "author": "c3pilot",
+  "description": "Speed limit middleware: fuses OSM maxspeed, YOLO detection, and road-type inference into speedLimitState. Enforces confirmed speed limits via cruise speed reduction.",
+  "min_openpilot": "0.10.0",
+  "max_openpilot": "0.10.99",
+  "dependencies": ["mapd"],
+  "cereal": {
+    "slots": {
+      "0": {
+        "struct_name": "SpeedLimitState",
+        "event_field": "speedLimitState",
+        "schema_file": "cereal/slot0.capnp"
+      }
+    }
+  },
+  "services": {
+    "speedLimitState": [true, 1.0, 1]
+  },
+  "hooks": {
+    "planner.v_cruise": {
+      "module": "planner_hook",
+      "function": "on_v_cruise",
+      "priority": 50,
+      "subscriptions": ["speedLimitState"]
+    }
+  },
+  "processes": [
+    {
+      "name": "speedlimitd",
+      "module": "speedlimitd",
+      "condition": "only_onroad"
+    }
+  ],
+  "params": {
+    "SpeedLimitConfirmed": {
+      "type": "string",
+      "default": "0",
+      "label": "Speed Limit Confirmed"
+    },
+    "SpeedLimitValue": {
+      "type": "string",
+      "default": "",
+      "label": "Speed Limit Value"
+    }
+  }
+}

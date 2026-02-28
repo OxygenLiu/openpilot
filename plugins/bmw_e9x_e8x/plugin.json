@@ -1,0 +1,24 @@
+{
+  "id": "bmw-e9x-e8x",
+  "name": "BMW E9x/E8x Car Interface",
+  "version": "1.0.0",
+  "type": "car",
+  "author": "c3pilot",
+  "description": "BMW E82/E90 car interface with VIN-based detection, DCC control, stepper servo steering, and panda safety monitoring. Safety model (bmw.h) is compiled C on STM32.",
+  "min_openpilot": "0.10.0",
+  "max_openpilot": "0.10.99",
+  "conflicts": [],
+  "dependencies": [],
+  "hooks": {
+    "car.register_interfaces": {
+      "module": "register",
+      "function": "on_register_interfaces",
+      "priority": 50
+    },
+    "car.panda_status": {
+      "module": "panda_status",
+      "function": "on_panda_status",
+      "priority": 50
+    }
+  }
+}

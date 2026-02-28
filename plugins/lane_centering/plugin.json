@@ -1,0 +1,24 @@
+{
+  "id": "lane-centering",
+  "name": "Lane Centering",
+  "version": "1.0.0",
+  "type": "hook",
+  "author": "c3pilot",
+  "description": "Curvature correction to center the car in its lane during turns. Uses vision lane line detection with hysteresis activation.",
+  "min_openpilot": "0.10.0",
+  "max_openpilot": "0.10.99",
+  "hooks": {
+    "controls.curvature_correction": {
+      "module": "correction",
+      "function": "on_curvature_correction",
+      "priority": 50
+    }
+  },
+  "params": {
+    "LaneCenteringCorrection": {
+      "type": "bool",
+      "default": false,
+      "label": "Lane Centering Correction"
+    }
+  }
+}

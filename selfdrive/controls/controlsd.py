@@ -18,6 +18,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, S
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
+from openpilot.selfdrive.plugins.hooks import hooks
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 
 State = log.SelfdriveState.OpenpilotState
@@ -117,6 +118,9 @@ class Controls:
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
     new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+    # Plugin hook: allow plugins to adjust curvature (e.g. lane centering)
+    lane_changing = model_v2.meta.laneChangeState != LaneChangeState.off
+    new_desired_curvature = hooks.run('controls.curvature_correction', new_desired_curvature, model_v2, CS.vEgo, lane_changing)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
@@ -135,6 +139,9 @@ class Controls:
       if not math.isfinite(attr):
         cloudlog.error(f"actuators.{p} not finite {actuators.to_dict()}")
         setattr(actuators, p, 0.0)
+
+    # Plugin hook: post-process actuators (e.g. BMW DCC vTarget override)
+    hooks.run('controls.post_actuators', None, actuators, CS, long_plan)
 
     return CC, lac_log
 
