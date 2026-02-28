@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "car",
   "author": "c3pilot",
-  "description": "BMW E82/E90 car interface with VIN-based detection, DCC control, stepper servo steering, and panda safety monitoring. Safety model (bmw.h) is compiled C on STM32.",
+  "description": "BMW E9x/E8x car interface with VIN-based detection, DCC control, stepper servo steering, and panda safety monitoring. Safety model (bmw.h) is compiled C on STM32.",
   "min_openpilot": "0.10.0",
   "max_openpilot": "0.10.99",
   "conflicts": [],

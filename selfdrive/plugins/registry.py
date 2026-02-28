@@ -12,7 +12,6 @@ import importlib.util
 import os
 import sys
 
-from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.plugins import hooks as hooks_module
 from openpilot.selfdrive.plugins.manifest import load_manifest, check_compatibility, \
@@ -43,7 +42,6 @@ class PluginRegistry:
   def __init__(self, plugins_dir: str = PLUGINS_DIR):
     self.plugins_dir = plugins_dir
     self.plugins: dict[str, PluginInfo] = {}
-    self.params = Params()
 
   def discover(self) -> list[str]:
     """Scan plugins directory and load manifests. Returns list of plugin IDs found."""
@@ -72,12 +70,24 @@ class PluginRegistry:
     return discovered
 
   def is_enabled(self, plugin_id: str) -> bool:
-    """Check if a plugin is enabled via Params."""
-    return self.params.get_bool(f"Plugin_{plugin_id}_enabled")
+    """Check if a plugin is enabled (no .disabled marker in plugin dir)."""
+    info = self.plugins.get(plugin_id)
+    if info is None:
+      return False
+    return not os.path.exists(os.path.join(info.plugin_dir, '.disabled'))
 
   def set_enabled(self, plugin_id: str, enabled: bool):
-    """Enable or disable a plugin via Params."""
-    self.params.put_bool(f"Plugin_{plugin_id}_enabled", enabled)
+    """Enable or disable a plugin via .disabled file marker."""
+    info = self.plugins.get(plugin_id)
+    if info is None:
+      return
+    marker = os.path.join(info.plugin_dir, '.disabled')
+    if enabled:
+      if os.path.exists(marker):
+        os.remove(marker)
+    else:
+      with open(marker, 'w') as f:
+        f.write('')
 
   def load_plugin(self, plugin_id: str) -> bool:
     """Load a plugin module and register its hooks.
@@ -239,7 +249,7 @@ class PluginRegistry:
         'name': info.name,
         'version': info.version,
         'type': info.type,
-        'enabled': info.enabled,
+        'enabled': self.is_enabled(info.id),
         'loaded': info.loaded,
         'error': info.error,
         'hooks': list(info.manifest.get('hooks', {}).keys()),
@@ -312,6 +322,5 @@ class PluginRegistry:
       shutil.rmtree(info.plugin_dir)
 
     del self.plugins[plugin_id]
-    self.params.remove(f"Plugin_{plugin_id}_enabled")
     cloudlog.info(f"Uninstalled plugin: {plugin_id}")
     return True
