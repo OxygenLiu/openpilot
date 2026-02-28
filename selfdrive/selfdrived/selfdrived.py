@@ -157,15 +157,6 @@ class SelfdriveD:
       self.events.add(EventName.longitudinalManeuver)
       self.startup_event = None
 
-    # DCC Calibration Mode: Prevent openpilot engagement while allowing CAN logging
-    if self.params.get_bool("DccCalibrationMode"):
-      self.events.add(EventName.dccCalibrationMode)
-      self.startup_event = None
-
-    # DCC Fallback Mode: Warn when using threshold-based fallback (learned table not loaded)
-    if self.sm['carControl'].actuators.dccFallbackMode:
-      self.events.add(EventName.dccFallbackMode)
-
     # Add startup event
     if self.startup_event is not None:
       self.events.add(self.startup_event)
