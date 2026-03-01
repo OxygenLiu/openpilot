@@ -44,7 +44,7 @@ def main():
     except Exception:
       cloudlog.exception("plugind poll error")
 
-    rk.monitor_time()
+    rk.keep_time()
 
 
 if __name__ == "__main__":
