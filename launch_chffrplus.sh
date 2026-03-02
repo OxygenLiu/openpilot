@@ -65,9 +65,20 @@ function launch {
     fi
   fi
 
+  # Apply c3_compat boot patches (after overlay swap so new code gets patched)
+  BOOT_PATCH=/data/plugins/c3_compat/boot_patch.sh
+  if [ -f "$BOOT_PATCH" ] && [ ! -f /data/plugins/c3_compat/.disabled ]; then
+    source "$BOOT_PATCH" "$DIR"
+  fi
+
   # handle pythonpath
   ln -sfn $(pwd) /data/pythonpath
   export PYTHONPATH="$PWD"
+
+  # AGNOS 12.8: extra packages in /data/pip_packages (read-only venv)
+  if [ -d "/data/pip_packages" ]; then
+    export PYTHONPATH="$PYTHONPATH:/data/pip_packages"
+  fi
 
   # hardware specific init
   if [ -f /AGNOS ]; then
